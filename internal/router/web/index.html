@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Claude Tier Router · 路由观察台</title>
+<style>
+:root{color-scheme:dark;--bg:#0c1017;--panel:#131a25;--line:#283345;--muted:#9cacc1;--ink:#edf3fc;--mint:#80e2be;--violet:#b5a1ff}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 ui-sans-serif,system-ui,-apple-system,sans-serif}main{max-width:1400px;margin:auto;padding:34px 32px 64px}header{display:flex;justify-content:space-between;align-items:start;gap:20px}.eyebrow{font-size:11px;color:var(--mint);letter-spacing:.18em}h1{font-size:32px;letter-spacing:-.03em;margin:6px 0}h2{font-size:17px;margin:0}p{color:var(--muted);margin:8px 0}.badge{border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--mint);font-size:12px}.auth{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:25px 0}.auth label{color:var(--muted)}input,select,textarea,button{font:inherit;color:var(--ink);background:#101722;border:1px solid var(--line);border-radius:7px;padding:9px 12px}input{width:280px}button{cursor:pointer}button:hover{border-color:var(--mint)}button.primary{background:var(--mint);color:#10271e;font-weight:650}#message{color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:22px 0}.card,.section{border:1px solid var(--line);border-radius:12px;background:var(--panel)}.card{padding:20px}.label{color:var(--muted);font-size:12px}.value{font-size:30px;line-height:1.4;font-variant-numeric:tabular-nums;letter-spacing:-.03em}.sub{font-size:12px;color:var(--muted)}.section{margin-top:20px;overflow:hidden}.section-head{padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:15px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{text-align:left;padding:13px 20px;border-top:1px solid var(--line);font-size:12px}th{color:var(--muted);font-weight:500}tr:hover td{background:#172130}.tier{font-size:11px;padding:3px 8px;border-radius:5px;display:inline-block;background:#293044;color:var(--violet)}.tier.low{color:var(--mint);background:#15342e}.why{white-space:normal;max-width:300px;min-width:180px}.smallbtn{padding:4px 9px;font-size:12px}.empty{padding:32px;text-align:center;color:var(--muted)}.bar{height:6px;background:var(--violet);border-radius:5px;margin:12px 0 7px;overflow:hidden}.bar span{display:block;height:100%;background:var(--mint)}.feedback{display:grid;grid-template-columns:1fr 1fr 130px 2fr auto;gap:10px;padding:0 22px 22px}.feedback input{width:100%;min-width:0}dialog{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(900px,94vw)}dialog::backdrop{background:#0009}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.warn{color:#f2bd7b}.foot{font-size:12px;margin-top:20px}@media(max-width:850px){main{padding:22px 16px}.cards{grid-template-columns:repeat(2,1fr)}header{display:block}.feedback{grid-template-columns:1fr 1fr}.value{font-size:25px}.badge{display:inline-block;margin-top:10px}}
+</style>
+<main>
+<header><div><div class="eyebrow">CLAUDE TIER ROUTER / LOCAL</div><h1>看清每一次模型选择</h1><p>逐请求路由、缓存成本与任务反馈，放在同一条时间线上。</p></div><span class="badge" id="mode">尚未连接</span></header>
+<form class="auth" id="login"><label for="token">本地网关凭证</label><input id="token" type="password" autocomplete="off" placeholder="ROUTER_TOKEN" required><button class="primary">连接统计</button><button type="button" id="refresh">刷新</button><span id="message" role="status">数据保存在本地 SQLite。</span></form>
+<div class="cards">
+<div class="card"><div class="label">已知费用小计 · USD</div><div class="value" id="cost">—</div><div class="sub" id="unknown">包含主请求与分类开销</div></div>
+<div class="card"><div class="label">推理请求</div><div class="value" id="requests">—</div><div class="sub" id="complete">接口完成不等于任务通过</div></div>
+<div class="card"><div class="label">Flash / Opus</div><div class="value" id="split">—</div><div class="bar"><span id="mix" style="width:0%"></span></div><div class="sub" id="classifier">分类器开销独立记录</div></div>
+<div class="card"><div class="label">人工验收 · 通过 / 失败</div><div class="value" id="quality">—</div><div class="sub" id="unrated">未评估的任务保持未知</div></div>
+</div>
+<section class="section"><div class="section-head"><h2>请求时间线</h2><span class="sub" id="cache">缓存数据尚未加载</span></div><div class="scroll"><table><thead><tr><th>时间 / 类型</th><th>任务</th><th>推荐 → 实际</th><th>决策理由</th><th>费用 USD</th><th>耗时</th><th>传输</th><th></th></tr></thead><tbody id="rows"></tbody></table><div class="empty" id="empty">连接后显示最近 500 条请求。使用 demo 命令可以查看模拟数据。</div></div></section>
+<section class="section"><div class="section-head"><h2>任务验收</h2><span class="sub">选择请求的“评价”，填写任务实际结果</span></div>
+<form id="feedback" class="feedback"><input id="session" aria-label="会话 ID" placeholder="会话 ID" required><input id="prompt" aria-label="提示 ID" placeholder="提示 ID" required><select id="outcome" aria-label="验收结果"><option value="unknown">未确定</option><option value="passed">通过</option><option value="failed">失败</option></select><input id="note" aria-label="验收备注" placeholder="测试结果、返工原因或人工判断"><button class="primary">保存反馈</button></form>
+<div class="scroll"><table><thead><tr><th>任务</th><th>结果</th><th>备注</th><th>来源</th></tr></thead><tbody id="feedbackRows"></tbody></table></div></section>
+<p class="foot">费用根据配置价格与完整 usage 核算，尚未与供应商账单对账。缺失价格、usage 或额外工具费用的请求显示未知；候选成本为估算。模拟数据价格仅用于演示。本页不把传输成功计为任务成功，也不推算未经对照的节省率。</p>
+</main>
+<dialog id="detail"><button id="close">关闭</button><h2>请求与决策详情</h2><pre id="detailText"></pre></dialog>
+<script>
+const $=id=>document.getElementById(id);
+let token=sessionStorage.getItem('router-token')||'';$('token').value=token;
+const money=x=>x==null?'未知':x.toFixed(6);
+const reasons={simple_task_rule:'简单任务规则',complexity_rule:'复杂任务规则',uncertain:'规则无法确定',uncertain_use_high:'不确定，保守使用 Opus',prices_unknown_use_high:'价格未配置',high_estimated_cheaper:'Opus 缓存后预计更便宜',switch_saving_below_threshold:'切换收益不足',history_compatibility_lock:'历史兼容性锁定',shadow_executes_high:'观察模式执行 Opus',fixed_mode:'固定模型模式',low_capability_or_context_limit:'廉价模型能力或上下文限制',tool_error_signal:'工具失败信号',classifier_simple:'分类器建议简单',classifier_complex:'分类器建议复杂'};
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})}});const body=await r.json();if(!r.ok)throw Error(body.error?.message||'请求失败');return body}
+function cell(row,text,cls){const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;row.append(td);return td}
+function tier(value){return value==='high'?'Opus':value==='low'?'Flash':'—'}
+async function refresh(){
+ try{
+  const [s,records,info,feedback]=await Promise.all([api('/api/summary'),api('/api/records'),api('/api/info'),api('/api/feedback')]);
+  $('mode').textContent=({shadow:'观察模式',auto:'自动路由',high:'固定 Opus',low:'固定 Flash'})[info.mode]+' · '+info.policy_version;
+  $('cost').textContent='$'+s.known_cost_usd.toFixed(4);$('unknown').textContent=s.unknown_cost_requests+' 条费用未知';$('unknown').className=s.unknown_cost_requests?'sub warn':'sub';
+  $('requests').textContent=s.inference_requests;$('complete').textContent=s.complete_requests+' 条响应完整';
+  $('split').textContent=s.low_requests+' / '+s.high_requests;$('mix').style.width=(s.inference_requests?100*s.low_requests/s.inference_requests:0)+'%';
+  $('classifier').textContent=s.classifier_requests+' 次分类 · 已知费用 $'+s.classifier_cost_usd.toFixed(6);
+  $('quality').textContent=s.passed_tasks+' / '+s.failed_tasks;$('unrated').textContent=s.unevaluated_tasks+' 个任务未评估';
+  $('cache').textContent='观测缓存读取 '+s.cache_read_tokens.toLocaleString()+' tokens';
+  $('rows').replaceChildren();$('empty').hidden=records.length>0;
+  for(const r of records){
+   const tr=document.createElement('tr');cell(tr,new Date(r.started_at).toLocaleTimeString()+' / '+r.kind);
+   cell(tr,(r.prompt_id||'未关联').slice(0,14));const td=cell(tr,tier(r.decision.recommended)+' → ');
+   const badge=document.createElement('span');badge.className='tier '+(r.actual_tier==='low'?'low':'');badge.textContent=tier(r.actual_tier);td.append(badge);
+   cell(tr,(r.decision.reasons||[]).map(x=>reasons[x]||x).join(' · '),'why');
+   const cost=cell(tr,money(r.cost_usd));cost.title=r.cost_status;cell(tr,(r.duration_ms/1000).toFixed(2)+'s');cell(tr,r.complete?'完整':r.error||'进行中');
+   const action=cell(tr,'');const detail=document.createElement('button');detail.className='smallbtn';detail.textContent='详情';detail.onclick=()=>{$('detailText').textContent=JSON.stringify(r,null,2);$('detail').showModal()};action.append(detail);
+   if(r.prompt_id && r.kind==='inference'){const rate=document.createElement('button');rate.className='smallbtn';rate.textContent='评价';rate.onclick=()=>{$('session').value=r.session_id;$('prompt').value=r.prompt_id;$('note').focus()};action.append(' ',rate)}
+   $('rows').append(tr)
+  }
+  $('feedbackRows').replaceChildren();for(const f of feedback){const tr=document.createElement('tr');cell(tr,f.prompt_id);cell(tr,({passed:'通过',failed:'失败',unknown:'未确定'})[f.outcome]);cell(tr,f.note,'why');cell(tr,'人工反馈');$('feedbackRows').append(tr)}
+  $('message').textContent='已更新 '+new Date().toLocaleTimeString()
+ }catch(e){$('message').textContent=e.message}
+}
+$('login').onsubmit=e=>{e.preventDefault();token=$('token').value;sessionStorage.setItem('router-token',token);refresh()};
+$('refresh').onclick=refresh;$('close').onclick=()=>$('detail').close();
+$('feedback').onsubmit=async e=>{e.preventDefault();try{await api('/api/feedback',{method:'POST',body:JSON.stringify({session_id:$('session').value,prompt_id:$('prompt').value,outcome:$('outcome').value,note:$('note').value})});await refresh()}catch(e){$('message').textContent=e.message}};
+if(token)refresh();
+</script></html>
