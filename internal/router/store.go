@@ -12,28 +12,33 @@ import (
 )
 
 type Record struct {
-	ID          string    `json:"id"`
-	ParentID    string    `json:"parent_id,omitempty"`
-	Kind        string    `json:"kind"`
-	Session     string    `json:"session_id"`
-	Prompt      string    `json:"prompt_id"`
-	Agent       string    `json:"agent_id"`
-	Class       string    `json:"request_class"`
-	Started     time.Time `json:"started_at"`
-	Mode        string    `json:"mode"`
-	Policy      string    `json:"policy_version"`
-	Decision    Decision  `json:"decision"`
-	Actual      string    `json:"actual_tier"`
-	Model       string    `json:"model"`
-	Prices      *Prices   `json:"price_snapshot"`
-	HTTPStatus  int       `json:"http_status"`
-	Complete    bool      `json:"complete"`
-	Error       string    `json:"error,omitempty"`
-	DurationMS  int64     `json:"duration_ms"`
-	FirstByteMS int64     `json:"first_byte_ms"`
-	Usage       Usage     `json:"usage"`
-	CostUSD     *float64  `json:"cost_usd"`
-	CostStatus  string    `json:"cost_status"`
+	ID            string             `json:"id"`
+	ParentID      string             `json:"parent_id,omitempty"`
+	Kind          string             `json:"kind"`
+	Session       string             `json:"session_id"`
+	Prompt        string             `json:"prompt_id"`
+	Agent         string             `json:"agent_id"`
+	Class         string             `json:"request_class"`
+	Started       time.Time          `json:"started_at"`
+	Mode          string             `json:"mode"`
+	Policy        string             `json:"policy_version"`
+	Decision      Decision           `json:"decision"`
+	Actual        string             `json:"actual_tier"`
+	Model         string             `json:"model"`
+	Prices        *Prices            `json:"price_snapshot"`
+	HTTPStatus    int                `json:"http_status"`
+	Complete      bool               `json:"complete"`
+	Error         string             `json:"error,omitempty"`
+	DurationMS    int64              `json:"duration_ms"`
+	FirstByteMS   int64              `json:"first_byte_ms"`
+	Usage         Usage              `json:"usage"`
+	CostUSD       *float64           `json:"cost_usd"`
+	CostAmount    *float64           `json:"cost_amount"`
+	CostCurrency  string             `json:"cost_currency"`
+	PricedAt      time.Time          `json:"priced_at,omitempty"`
+	PricePeriod   string             `json:"price_period,omitempty"`
+	Retrospective *RetrospectiveCost `json:"retrospective_estimate,omitempty"`
+	CostStatus    string             `json:"cost_status"`
 }
 type Feedback struct {
 	Session string    `json:"session_id"`
@@ -142,91 +147,4 @@ func (s *Store) Feedbacks() ([]Feedback, error) {
 		out = append(out, f)
 	}
 	return out, rows.Err()
-}
-
-type Summary struct {
-	Requests           int     `json:"inference_requests"`
-	ClassifierRequests int     `json:"classifier_requests"`
-	KnownCostUSD       float64 `json:"known_cost_usd"`
-	ClassifierCostUSD  float64 `json:"classifier_cost_usd"`
-	UnknownCost        int     `json:"unknown_cost_requests"`
-	Complete           int     `json:"complete_requests"`
-	High               int     `json:"high_requests"`
-	Low                int     `json:"low_requests"`
-	CacheRead          int64   `json:"cache_read_tokens"`
-	InputTotal         int64   `json:"input_tokens_total"`
-	Tasks              int     `json:"tasks"`
-	Passed             int     `json:"passed_tasks"`
-	Failed             int     `json:"failed_tasks"`
-	Unevaluated        int     `json:"unevaluated_tasks"`
-}
-
-func (s *Store) Summary() (Summary, error) {
-	var out Summary
-	rows, err := s.db.Query("SELECT payload FROM records")
-	if err != nil {
-		return out, err
-	}
-	tasks := map[string]bool{}
-	for rows.Next() {
-		var b string
-		if err = rows.Scan(&b); err != nil {
-			rows.Close()
-			return out, err
-		}
-		var r Record
-		if err = json.Unmarshal([]byte(b), &r); err != nil {
-			rows.Close()
-			return out, err
-		}
-		if r.CostUSD == nil {
-			out.UnknownCost++
-		} else {
-			out.KnownCostUSD += *r.CostUSD
-		}
-		if r.Kind == "classifier" {
-			out.ClassifierRequests++
-			if r.CostUSD != nil {
-				out.ClassifierCostUSD += *r.CostUSD
-			}
-			continue
-		}
-		out.Requests++
-		if r.Complete {
-			out.Complete++
-		}
-		if r.Actual == "high" {
-			out.High++
-		}
-		if r.Actual == "low" {
-			out.Low++
-		}
-		out.CacheRead += num(r.Usage.Read)
-		out.InputTotal += r.Usage.TotalInput()
-		if r.Prompt != "" {
-			tasks[r.Session+"\x00"+r.Prompt] = true
-		}
-	}
-	err = rows.Err()
-	rows.Close()
-	if err != nil {
-		return out, err
-	}
-	fs, err := s.Feedbacks()
-	if err != nil {
-		return out, err
-	}
-	for _, f := range fs {
-		if tasks[f.Session+"\x00"+f.Prompt] {
-			if f.Outcome == "passed" {
-				out.Passed++
-			}
-			if f.Outcome == "failed" {
-				out.Failed++
-			}
-		}
-	}
-	out.Tasks = len(tasks)
-	out.Unevaluated = out.Tasks - out.Passed - out.Failed
-	return out, nil
 }

@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"math"
 	"net"
 	"net/url"
 	"os"
@@ -17,13 +16,14 @@ import (
 )
 
 type Prices struct {
-	Version      string  `json:"version"`
-	Currency     string  `json:"currency"`
-	Input        float64 `json:"input_per_million"`
-	CacheRead    float64 `json:"cache_read_per_million"`
-	CacheWrite5m float64 `json:"cache_write_5m_per_million"`
-	CacheWrite1h float64 `json:"cache_write_1h_per_million"`
-	Output       float64 `json:"output_per_million"`
+	Version      string       `json:"version"`
+	Currency     string       `json:"currency"`
+	Input        float64      `json:"input_per_million"`
+	CacheRead    float64      `json:"cache_read_per_million"`
+	CacheWrite5m float64      `json:"cache_write_5m_per_million"`
+	CacheWrite1h float64      `json:"cache_write_1h_per_million"`
+	Output       float64      `json:"output_per_million"`
+	Peak         *PeakPricing `json:"peak,omitempty"`
 }
 
 // Explicit zero prices are valid; missing price fields are not zero prices.
@@ -159,13 +159,8 @@ func (c Config) Validate() error {
 			return fmt.Errorf("%s: positive cache TTL estimate required", name)
 		}
 		if p.Prices != nil {
-			if p.Prices.Version == "" || p.Prices.Currency != "USD" {
-				return fmt.Errorf("%s: price version and USD currency required", name)
-			}
-			for _, n := range []float64{p.Prices.Input, p.Prices.CacheRead, p.Prices.CacheWrite5m, p.Prices.CacheWrite1h, p.Prices.Output} {
-				if n < 0 || math.IsInf(n, 0) || math.IsNaN(n) {
-					return errors.New("prices must be finite and nonnegative")
-				}
+			if err := p.Prices.Validate(); err != nil {
+				return fmt.Errorf("%s: %w", name, err)
 			}
 		}
 	}

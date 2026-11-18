@@ -138,8 +138,8 @@ func TestModesAndHistoryProtection(t *testing.T) {
 	}
 	c.Mode = "auto"
 	c.Low.Prices = nil
-	if d = Decide(c, r, b, "low", "simple", 1); d.Selected != "high" {
-		t.Fatal("unpriced auto route")
+	if d = Decide(c, r, b, "low", "simple", 1); d.Selected != "low" || d.CostComparable {
+		t.Fatal("unknown package price prevented capability-based routing")
 	}
 }
 func TestConfigurationAndURLs(t *testing.T) {

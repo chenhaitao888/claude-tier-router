@@ -7,17 +7,22 @@ import (
 )
 
 type Decision struct {
-	Recommended string   `json:"recommended"`
-	Proposed    string   `json:"proposed"`
-	Selected    string   `json:"selected"`
-	Reasons     []string `json:"reasons"`
-	Classifier  string   `json:"classifier"`
-	Confidence  float64  `json:"confidence"`
-	HighCost    *float64 `json:"estimated_high_usd"`
-	LowCost     *float64 `json:"estimated_low_usd"`
-	HighCached  int      `json:"estimated_high_cached_tokens"`
-	LowCached   int      `json:"estimated_low_cached_tokens"`
-	Error       string   `json:"error,omitempty"`
+	Recommended    string   `json:"recommended"`
+	Proposed       string   `json:"proposed"`
+	Selected       string   `json:"selected"`
+	Reasons        []string `json:"reasons"`
+	Classifier     string   `json:"classifier"`
+	Confidence     float64  `json:"confidence"`
+	HighCost       *float64 `json:"estimated_high_usd"`
+	LowCost        *float64 `json:"estimated_low_usd"`
+	HighNativeCost *float64 `json:"estimated_high_cost"`
+	LowNativeCost  *float64 `json:"estimated_low_cost"`
+	HighCurrency   string   `json:"estimated_high_currency"`
+	LowCurrency    string   `json:"estimated_low_currency"`
+	CostComparable bool     `json:"cost_comparable"`
+	HighCached     int      `json:"estimated_high_cached_tokens"`
+	LowCached      int      `json:"estimated_low_cached_tokens"`
+	Error          string   `json:"error,omitempty"`
 }
 type cacheEntry struct {
 	Prefix string
@@ -134,8 +139,24 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 	now := time.Now()
 	d.HighCached = cachedTokens(r, c.High, b.Cache["high"], now)
 	d.LowCached = cachedTokens(r, c.Low, b.Cache["low"], now)
-	d.HighCost = Estimate(r, c.High, d.HighCached, c.Policy.EstimatedOutputTokens)
-	d.LowCost = Estimate(r, c.Low, d.LowCached, c.Policy.EstimatedOutputTokens)
+	high, low := c.High, c.Low
+	high.Prices, _ = c.High.Prices.At(now)
+	low.Prices, _ = c.Low.Prices.At(now)
+	d.HighNativeCost = Estimate(r, high, d.HighCached, c.Policy.EstimatedOutputTokens)
+	d.LowNativeCost = Estimate(r, low, d.LowCached, c.Policy.EstimatedOutputTokens)
+	if high.Prices != nil {
+		d.HighCurrency = high.Prices.Currency
+	}
+	if low.Prices != nil {
+		d.LowCurrency = low.Prices.Currency
+	}
+	if d.HighCurrency == "USD" {
+		d.HighCost = d.HighNativeCost
+	}
+	if d.LowCurrency == "USD" {
+		d.LowCost = d.LowNativeCost
+	}
+	d.CostComparable = d.HighNativeCost != nil && d.LowNativeCost != nil && d.HighCurrency == d.LowCurrency
 	output := r.MaxTokens
 	if output == 0 {
 		output = c.Policy.EstimatedOutputTokens
@@ -148,10 +169,11 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 	}
 	d.Proposed = d.Recommended
 	if d.Recommended == "low" {
-		if d.LowCost == nil || d.HighCost == nil {
-			d.Proposed = "high"
-			d.Reasons = append(d.Reasons, "prices_unknown_use_high")
-		} else if *d.HighCost <= *d.LowCost {
+		if d.LowNativeCost == nil || d.HighNativeCost == nil {
+			d.Reasons = append(d.Reasons, "prices_unknown_use_recommendation")
+		} else if !d.CostComparable {
+			d.Reasons = append(d.Reasons, "currency_not_comparable")
+		} else if *d.HighNativeCost <= *d.LowNativeCost {
 			d.Proposed = "high"
 			d.Reasons = append(d.Reasons, "high_estimated_cheaper")
 		}
@@ -160,8 +182,8 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 		d.Proposed = "high"
 		d.Reasons = append(d.Reasons, "low_capability_or_context_limit")
 	}
-	if b.Current == "high" && d.Proposed == "low" && d.HighCost != nil && d.LowCost != nil && *d.HighCost > 0 {
-		if (*d.HighCost-*d.LowCost) / *d.HighCost < c.Policy.MinSwitchSaving {
+	if b.Current == "high" && d.Proposed == "low" && d.CostComparable && *d.HighNativeCost > 0 {
+		if (*d.HighNativeCost-*d.LowNativeCost) / *d.HighNativeCost < c.Policy.MinSwitchSaving {
 			d.Proposed = "high"
 			d.Reasons = append(d.Reasons, "switch_saving_below_threshold")
 		}

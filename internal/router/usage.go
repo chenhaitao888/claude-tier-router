@@ -74,6 +74,14 @@ func num(p *int64) int64 {
 	return *p
 }
 func (u Usage) TotalInput() int64 { return num(u.Input) + num(u.Read) + num(u.Write) }
+func (u Usage) HasAllTokens() bool {
+	for _, n := range []*int64{u.Input, u.Read, u.Write, u.Output} {
+		if n == nil || *n < 0 {
+			return false
+		}
+	}
+	return true
+}
 func (u Usage) Cost(p Provider, complete bool) (*float64, string) {
 	if !complete {
 		return nil, "incomplete_response"
@@ -83,6 +91,9 @@ func (u Usage) Cost(p Provider, complete bool) (*float64, string) {
 	}
 	if p.Prices == nil {
 		return nil, "prices_not_configured"
+	}
+	if p.Prices.Peak != nil {
+		return nil, "price_period_not_selected"
 	}
 	if u.ExtraCharges {
 		return nil, "unpriced_server_tools"

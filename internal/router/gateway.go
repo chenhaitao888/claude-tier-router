@@ -81,9 +81,12 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			errorJSON(w, 500, "could not read records")
 			return
 		}
+		for i := range rows {
+			rows[i].EstimateUnpriced(g.Config)
+		}
 		jsonResponse(w, rows)
 	case r.Method == "GET" && r.URL.Path == "/api/summary":
-		v, err := g.Store.Summary()
+		v, err := g.Store.Summary(g.Config)
 		if err != nil {
 			errorJSON(w, 500, "could not read summary")
 			return
@@ -195,9 +198,10 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	defer func() {
 		rec.DurationMS = time.Since(started).Milliseconds()
 		if rec.Actual != "" {
-			rec.CostUSD, rec.CostStatus = rec.Usage.Cost(g.Config.Provider(rec.Actual), rec.Complete)
+			rec.FinalizeCost()
 			if rec.Model != g.Config.Provider(rec.Actual).Model {
 				rec.CostUSD = nil
+				rec.CostAmount = nil
 				rec.CostStatus = "reported_model_differs_from_price_model"
 			}
 		}
@@ -225,7 +229,8 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	rec.Actual = rec.Decision.Selected
 	p := g.Config.Provider(rec.Actual)
 	rec.Model = p.Model
-	rec.Prices = p.Prices
+	rec.PricedAt = time.Now()
+	rec.Prices, rec.PricePeriod = p.Prices.At(rec.PricedAt)
 	outgoing, err := ReplaceModel(body, p.Model)
 	if err != nil {
 		rec.Error = "request_mapping_error"

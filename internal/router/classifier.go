@@ -13,12 +13,14 @@ import (
 func (g *Gateway) classify(ctx context.Context, parent Record, r Request) (string, string, float64) {
 	start := time.Now()
 	rec := Record{ID: newID(), ParentID: parent.ID, Kind: "classifier", Session: parent.Session, Prompt: parent.Prompt, Agent: parent.Agent, Class: "router_classifier", Started: start, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, Actual: "low", Model: g.Config.Low.Model, Prices: g.Config.Low.Prices, CostStatus: "in_progress"}
+	rec.PricedAt = start
+	rec.Prices, rec.PricePeriod = g.Config.Low.Prices.At(start)
 	if g.Store.Save(rec) != nil {
 		return "", "classifier_ledger_unavailable", 0
 	}
 	defer func() {
 		rec.DurationMS = time.Since(start).Milliseconds()
-		rec.CostUSD, rec.CostStatus = rec.Usage.Cost(g.Config.Low, rec.Complete)
+		rec.FinalizeCost()
 		if g.Store.Save(rec) != nil {
 			g.logError("failed to persist classifier result")
 		}
