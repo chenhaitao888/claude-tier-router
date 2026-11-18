@@ -53,7 +53,7 @@ func run(args []string) error {
 		fmt.Println("Provider URLs and credentials have not been probed.")
 		return nil
 	}
-	if err = c.CheckSecrets(); err != nil {
+	if err = c.PrepareSecrets(); err != nil {
 		return err
 	}
 	store, err := router.OpenStore(c.Database)
@@ -71,6 +71,7 @@ func run(args []string) error {
 	go func() { serverErr <- server.Serve(listener) }()
 	address := "http://" + listener.Addr().String()
 	fmt.Println("Local dashboard:", address, "| mode:", c.Mode)
+	fmt.Println("Dashboard login token:", c.Token())
 	defer func() {
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
@@ -104,7 +105,7 @@ func launchEnv(existing []string, c router.Config, address string) []string {
 		window = c.Low.ContextTokens
 	}
 	replace := map[string]string{
-		"ANTHROPIC_BASE_URL": address, "ANTHROPIC_AUTH_TOKEN": os.Getenv(c.GatewayTokenEnv),
+		"ANTHROPIC_BASE_URL": address, "ANTHROPIC_AUTH_TOKEN": c.Token(),
 		"ANTHROPIC_MODEL": "router-auto", "ANTHROPIC_DEFAULT_OPUS_MODEL": "router-auto", "ANTHROPIC_DEFAULT_SONNET_MODEL": "router-auto", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "router-auto",
 		"CLAUDE_CODE_SUBAGENT_MODEL": "router-auto", "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": strconv.Itoa(window * 3 / 4),
 	}

@@ -21,19 +21,20 @@ go build -o bin/router ./cmd/router
 cp config.example.json config.json
 ```
 
-编辑两个 provider 的 `base_url`、`model`、`auth`、`context_tokens` 和 `prices`。`base_url` 是 API 根地址，可以包含 `/anthropic` 或 `/v1`，不能包含 `/messages`。模型 ID 会显式改写，不依赖供应商对 Claude 模型别名的隐式映射。上下文长度使用实际模型和中转服务的限制；示例值只是占位配置。
+编辑两个 provider 的 `base_url`、`api_key`、`model`、`auth`、`context_tokens` 和 `prices`。密钥与接口地址一样直接写入本地 `config.json`，不需要设置环境变量。`base_url` 是 API 根地址，可以包含 `/anthropic` 或 `/v1`，不能包含 `/messages`。模型 ID 会显式改写，不依赖供应商对 Claude 模型别名的隐式映射。上下文长度使用实际模型和中转服务的限制；示例值只是占位配置。
 
-在本地环境中设置下面三个变量，密钥由进程读取，配置文件只保存变量名：
+在示例文件中填好 `high.api_key` 和 `low.api_key` 后直接启动：
 
 ```sh
-export ROUTER_TOKEN='替换为至少16字符的本地随机凭证'
-export OPUS_API_KEY='你的高级模型密钥'
-export DEEPSEEK_API_KEY='你的廉价模型密钥'
 ./bin/router check -config config.json
 ./bin/router claude -config config.json
 ```
 
 `check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，只修改子进程环境，不修改 `~/.claude`。附加 Claude Code 参数放在 `--` 后面，例如 `./bin/router claude -config config.json -- --continue`。现有受管理设置和 apiKeyHelper 仍可能影响客户端身份认证，需要在 Claude Code `/status` 中确认最终连接。
+
+本地网关凭证会在启动时自动生成，自动传给 Claude Code；终端中的 `Dashboard login token` 用于登录统计页。每次重新启动会生成新的凭证。也可以在配置顶层填写至少 16 个字符的 `gateway_token`，固定本地登录凭证。`config.json` 已被 Git 忽略，程序不会把上游密钥写入日志或统计接口。
+
+旧的环境变量配置继续兼容：provider 可使用 `api_key_env`，网关可使用 `gateway_token_env`。同时配置时，非空的 `api_key` / `gateway_token` 优先；未提供本地网关凭证时仍会自动生成。
 
 也可独立启动代理：
 
@@ -41,7 +42,7 @@ export DEEPSEEK_API_KEY='你的廉价模型密钥'
 ./bin/router serve -config config.json
 ```
 
-再为 Claude Code 设置 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 并启用 `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`。统计页面使用同一个本地网关凭证登录。当前只允许 loopback 监听，不用于共享网络部署。
+再为 Claude Code 设置 `ANTHROPIC_BASE_URL`、`ANTHROPIC_AUTH_TOKEN` 并启用 `CLAUDE_CODE_GATEWAY_HINT_HEADERS=1`，其中 `ANTHROPIC_AUTH_TOKEN` 使用终端显示的 `Dashboard login token`。使用上面的 `router claude` 启动方式会自动完成这些配置。统计页面使用同一个本地网关凭证登录。当前只允许 loopback 监听，不用于共享网络部署。
 
 ## 路由模式
 

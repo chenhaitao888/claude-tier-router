@@ -1,12 +1,11 @@
 {
   "listen": "127.0.0.1:8787",
   "database": "data/router.db",
-  "gateway_token_env": "ROUTER_TOKEN",
   "mode": "shadow",
   "high": {
     "base_url": "https://your-opus-provider.example",
     "model": "YOUR_OPUS_MODEL_ID",
-    "api_key_env": "OPUS_API_KEY",
+    "api_key": "YOUR_OPUS_API_KEY",
     "auth": "api_key",
     "context_tokens": 200000,
     "cache": {
@@ -18,7 +17,7 @@
   "low": {
     "base_url": "https://your-deepseek-provider.example/anthropic",
     "model": "deepseek-flash",
-    "api_key_env": "DEEPSEEK_API_KEY",
+    "api_key": "YOUR_DEEPSEEK_API_KEY",
     "auth": "bearer",
     "context_tokens": 128000,
     "cache": {

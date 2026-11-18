@@ -2,6 +2,8 @@ package router
 
 import (
 	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -54,7 +56,8 @@ type CacheConfig struct {
 type Provider struct {
 	BaseURL       string      `json:"base_url"`
 	Model         string      `json:"model"`
-	APIKeyEnv     string      `json:"api_key_env"`
+	APIKey        string      `json:"api_key,omitempty"`
+	APIKeyEnv     string      `json:"api_key_env,omitempty"`
 	Auth          string      `json:"auth"`
 	ContextTokens int         `json:"context_tokens"`
 	Cache         CacheConfig `json:"cache"`
@@ -74,7 +77,8 @@ type ClassifierConfig struct {
 type Config struct {
 	Listen          string           `json:"listen"`
 	Database        string           `json:"database"`
-	GatewayTokenEnv string           `json:"gateway_token_env"`
+	GatewayToken    string           `json:"gateway_token,omitempty"`
+	GatewayTokenEnv string           `json:"gateway_token_env,omitempty"`
 	Mode            string           `json:"mode"`
 	High            Provider         `json:"high"`
 	Low             Provider         `json:"low"`
@@ -114,8 +118,8 @@ func (c Config) Validate() error {
 	if ip == nil || !ip.IsLoopback() {
 		return errors.New("listen must be a loopback IP address")
 	}
-	if c.Database == "" || c.GatewayTokenEnv == "" {
-		return errors.New("database and gateway_token_env are required")
+	if c.Database == "" {
+		return errors.New("database is required")
 	}
 	switch c.Mode {
 	case "shadow", "auto", "high", "low":
@@ -139,8 +143,11 @@ func (c Config) Validate() error {
 		if strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/messages") {
 			return fmt.Errorf("%s: base_url must not include /messages", name)
 		}
-		if p.Model == "" || p.APIKeyEnv == "" || p.ContextTokens <= 0 {
-			return fmt.Errorf("%s: model, api_key_env and context_tokens required", name)
+		if p.Model == "" || p.ContextTokens <= 0 {
+			return fmt.Errorf("%s: model and context_tokens required", name)
+		}
+		if strings.TrimSpace(p.APIKey) == "" && p.APIKeyEnv == "" {
+			return fmt.Errorf("%s: api_key or api_key_env required", name)
 		}
 		if p.Auth != "api_key" && p.Auth != "bearer" {
 			return fmt.Errorf("%s: invalid auth", name)
@@ -177,13 +184,45 @@ func (p Provider) Endpoint(path string) string {
 	}
 	return base + path
 }
+
+// Inline values take precedence; existing environment-based configurations work.
+func (p Provider) Key() string {
+	if key := strings.TrimSpace(p.APIKey); key != "" {
+		return key
+	}
+	return strings.TrimSpace(os.Getenv(p.APIKeyEnv))
+}
+
+func (c Config) Token() string {
+	if token := strings.TrimSpace(c.GatewayToken); token != "" {
+		return token
+	}
+	return strings.TrimSpace(os.Getenv(c.GatewayTokenEnv))
+}
+
+// PrepareSecrets creates one process-local credential shared by the gateway
+// and its Claude Code child. It never changes the user's configuration file.
+func (c *Config) PrepareSecrets() error {
+	if c.Token() == "" {
+		var random [24]byte
+		if _, err := rand.Read(random[:]); err != nil {
+			return fmt.Errorf("generate local gateway credential: %w", err)
+		}
+		c.GatewayToken = hex.EncodeToString(random[:])
+	}
+	return c.CheckSecrets()
+}
+
 func (c Config) CheckSecrets() error {
-	for _, name := range []string{c.GatewayTokenEnv, c.High.APIKeyEnv, c.Low.APIKeyEnv} {
-		if strings.TrimSpace(os.Getenv(name)) == "" {
-			return fmt.Errorf("missing environment variable %s", name)
+	for _, item := range []struct {
+		name     string
+		provider Provider
+	}{{"high", c.High}, {"low", c.Low}} {
+		if item.provider.Key() == "" {
+			return fmt.Errorf("%s: set api_key in config or provide the configured api_key_env", item.name)
 		}
 	}
-	if len(os.Getenv(c.GatewayTokenEnv)) < 16 {
+	if len(c.Token()) < 16 {
 		return errors.New("gateway token must be at least 16 characters")
 	}
 	return nil

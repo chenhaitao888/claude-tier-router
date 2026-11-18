@@ -11,7 +11,6 @@ import (
 	"log"
 	"net"
 	"net/http"
-	"os"
 	"strings"
 	"time"
 )
@@ -26,7 +25,7 @@ type Gateway struct {
 }
 
 func NewGateway(c Config, s *Store) *Gateway {
-	return &Gateway{Config: c, Store: s, Engine: NewEngine(), token: os.Getenv(c.GatewayTokenEnv), Logger: log.Default(),
+	return &Gateway{Config: c, Store: s, Engine: NewEngine(), token: c.Token(), Logger: log.Default(),
 		Client: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: 32, DisableCompression: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func newID() string {
@@ -139,9 +138,9 @@ func (g *Gateway) upstream(ctx context.Context, p Provider, path, query string, 
 		req.Header.Set("anthropic-version", "2023-06-01")
 	}
 	if p.Auth == "bearer" {
-		req.Header.Set("Authorization", "Bearer "+os.Getenv(p.APIKeyEnv))
+		req.Header.Set("Authorization", "Bearer "+p.Key())
 	} else {
-		req.Header.Set("x-api-key", os.Getenv(p.APIKeyEnv))
+		req.Header.Set("x-api-key", p.Key())
 	}
 	return g.Client.Do(req)
 }

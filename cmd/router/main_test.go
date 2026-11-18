@@ -23,3 +23,26 @@ func TestLauncherOverridesOnlyChildEnvironment(t *testing.T) {
 		t.Fatal("mutated caller environment")
 	}
 }
+
+func TestLauncherWithInlineKeysNeedsNoEnvironment(t *testing.T) {
+	c := router.Config{
+		High: router.Provider{APIKey: "inline-high-secret", ContextTokens: 200000},
+		Low:  router.Provider{APIKey: "inline-low-secret", ContextTokens: 100000},
+	}
+	if err := c.PrepareSecrets(); err != nil {
+		t.Fatal(err)
+	}
+	env := launchEnv([]string{"PATH=/usr/bin"}, c, "http://127.0.0.1:8787")
+	found := false
+	for _, entry := range env {
+		if entry == "ANTHROPIC_AUTH_TOKEN="+c.Token() {
+			found = true
+		}
+		if strings.Contains(entry, c.High.APIKey) || strings.Contains(entry, c.Low.APIKey) {
+			t.Fatal("upstream config keys were copied into child environment")
+		}
+	}
+	if !found {
+		t.Fatal("child did not receive the gateway's generated credential")
+	}
+}
