@@ -2,8 +2,6 @@ package router
 
 import (
 	"bytes"
-	"crypto/rand"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -64,10 +62,11 @@ type Provider struct {
 	Prices        *Prices     `json:"prices"`
 }
 type Policy struct {
-	Version               string  `json:"version"`
-	AllowTextSwitch       bool    `json:"allow_text_switch"`
-	MinSwitchSaving       float64 `json:"min_switch_saving"`
-	EstimatedOutputTokens int     `json:"estimated_output_tokens"`
+	Version               string        `json:"version"`
+	AllowTextSwitch       bool          `json:"allow_text_switch"`
+	MinSwitchSaving       float64       `json:"min_switch_saving"`
+	EstimatedOutputTokens int           `json:"estimated_output_tokens"`
+	ExchangeRate          *ExchangeRate `json:"exchange_rate,omitempty"`
 }
 type ClassifierConfig struct {
 	Enabled   bool `json:"enabled"`
@@ -75,15 +74,14 @@ type ClassifierConfig struct {
 	MaxChars  int  `json:"max_chars"`
 }
 type Config struct {
-	Listen          string           `json:"listen"`
-	Database        string           `json:"database"`
-	GatewayToken    string           `json:"gateway_token,omitempty"`
-	GatewayTokenEnv string           `json:"gateway_token_env,omitempty"`
-	Mode            string           `json:"mode"`
-	High            Provider         `json:"high"`
-	Low             Provider         `json:"low"`
-	Policy          Policy           `json:"policy"`
-	Classifier      ClassifierConfig `json:"classifier"`
+	Listen             string           `json:"listen"`
+	Database           string           `json:"database"`
+	Mode               string           `json:"mode"`
+	High               Provider         `json:"high"`
+	Low                Provider         `json:"low"`
+	Policy             Policy           `json:"policy"`
+	Classifier         ClassifierConfig `json:"classifier"`
+	StoreTaskSummaries bool             `json:"store_task_summaries,omitempty"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -95,7 +93,13 @@ func LoadConfig(path string) (Config, error) {
 	defer f.Close()
 	d := json.NewDecoder(f)
 	d.DisallowUnknownFields()
-	if err = d.Decode(&c); err != nil {
+	// Accept and discard retired local credentials so existing configs still load.
+	legacy := struct {
+		*Config
+		GatewayToken    json.RawMessage `json:"gateway_token"`
+		GatewayTokenEnv json.RawMessage `json:"gateway_token_env"`
+	}{Config: &c}
+	if err = d.Decode(&legacy); err != nil {
 		return c, err
 	}
 	if d.Decode(new(any)) != io.EOF {
@@ -128,6 +132,11 @@ func (c Config) Validate() error {
 	}
 	if c.Policy.Version == "" || c.Policy.EstimatedOutputTokens <= 0 || c.Policy.MinSwitchSaving < 0 || c.Policy.MinSwitchSaving >= 1 {
 		return errors.New("invalid routing policy")
+	}
+	if c.Policy.ExchangeRate != nil {
+		if err := c.Policy.ExchangeRate.Validate(); err != nil {
+			return err
+		}
 	}
 	if c.Classifier.TimeoutMS <= 0 || c.Classifier.MaxChars < 100 || c.Classifier.MaxChars > 20000 {
 		return errors.New("invalid classifier bounds")
@@ -188,26 +197,6 @@ func (p Provider) Key() string {
 	return strings.TrimSpace(os.Getenv(p.APIKeyEnv))
 }
 
-func (c Config) Token() string {
-	if token := strings.TrimSpace(c.GatewayToken); token != "" {
-		return token
-	}
-	return strings.TrimSpace(os.Getenv(c.GatewayTokenEnv))
-}
-
-// PrepareSecrets creates one process-local credential shared by the gateway
-// and its Claude Code child. It never changes the user's configuration file.
-func (c *Config) PrepareSecrets() error {
-	if c.Token() == "" {
-		var random [24]byte
-		if _, err := rand.Read(random[:]); err != nil {
-			return fmt.Errorf("generate local gateway credential: %w", err)
-		}
-		c.GatewayToken = hex.EncodeToString(random[:])
-	}
-	return c.CheckSecrets()
-}
-
 func (c Config) CheckSecrets() error {
 	for _, item := range []struct {
 		name     string
@@ -216,9 +205,6 @@ func (c Config) CheckSecrets() error {
 		if item.provider.Key() == "" {
 			return fmt.Errorf("%s: set api_key in config or provide the configured api_key_env", item.name)
 		}
-	}
-	if len(c.Token()) < 16 {
-		return errors.New("gateway token must be at least 16 characters")
 	}
 	return nil
 }

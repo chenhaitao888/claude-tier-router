@@ -32,7 +32,6 @@ func fixture(t *testing.T, h http.HandlerFunc) (*Gateway, *Store) {
 	c.High.BaseURL = up.URL
 	c.Low.BaseURL = up.URL
 	c.Mode = "high"
-	t.Setenv(c.GatewayTokenEnv, token)
 	t.Setenv(c.High.APIKeyEnv, "real-high-key")
 	t.Setenv(c.Low.APIKeyEnv, "real-low-key")
 	s, err := OpenStore(filepath.Join(t.TempDir(), "ledger.db"))
@@ -91,14 +90,14 @@ func TestProxyBytePreservationCredentialsAndLedger(t *testing.T) {
 		t.Fatal(sum, err)
 	}
 }
-func TestAuthAndTokenCountingDoNotDispatch(t *testing.T) {
+func TestCrossOriginAndTokenCountingDoNotDispatch(t *testing.T) {
 	var count atomic.Int64
 	g, s := fixture(t, func(w http.ResponseWriter, r *http.Request) { count.Add(1) })
 	req := request(sample)
-	req.Header.Del("Authorization")
+	req.Header.Set("Origin", "https://untrusted.example")
 	rr := httptest.NewRecorder()
 	g.ServeHTTP(rr, req)
-	if rr.Code != 401 {
+	if rr.Code != 403 {
 		t.Fatal(rr.Code)
 	}
 	req = request(sample)

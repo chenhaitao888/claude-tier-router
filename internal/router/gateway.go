@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"crypto/rand"
-	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
 	"io"
@@ -20,12 +19,11 @@ type Gateway struct {
 	Store  *Store
 	Engine *Engine
 	Client *http.Client
-	token  string
 	Logger *log.Logger
 }
 
 func NewGateway(c Config, s *Store) *Gateway {
-	return &Gateway{Config: c, Store: s, Engine: NewEngine(), token: c.Token(), Logger: log.Default(),
+	return &Gateway{Config: c, Store: s, Engine: NewEngine(), Logger: log.Default(),
 		Client: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: 32, DisableCompression: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func newID() string {
@@ -36,14 +34,6 @@ func newID() string {
 	return hex.EncodeToString(b[:])
 }
 func (g *Gateway) logError(message string) { g.Logger.Print(message) }
-func (g *Gateway) authorized(r *http.Request) bool {
-	for _, v := range []string{strings.TrimPrefix(r.Header.Get("Authorization"), "Bearer "), r.Header.Get("x-api-key")} {
-		if g.token != "" && subtle.ConstantTimeCompare([]byte(v), []byte(g.token)) == 1 {
-			return true
-		}
-	}
-	return false
-}
 func errorJSON(w http.ResponseWriter, status int, message string) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
@@ -64,8 +54,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		g.dashboard(w, r)
 		return
 	}
-	if !g.authorized(r) {
-		errorJSON(w, 401, "valid gateway token required")
+	if !localRequest(r) {
+		errorJSON(w, 403, "local same-origin requests only")
 		return
 	}
 	switch {
@@ -75,16 +65,23 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		errorJSON(w, 501, "token counting is not implemented; client may estimate locally")
 	case r.Method == "HEAD" && r.URL.Path == "/api/hello":
 		w.WriteHeader(http.StatusOK)
-	case r.Method == "GET" && r.URL.Path == "/api/records":
-		rows, err := g.Store.Records(500)
-		if err != nil {
-			errorJSON(w, 500, "could not read records")
+	case r.Method == "GET" && (r.URL.Path == "/api/records" || r.URL.Path == "/api/tasks" || r.URL.Path == "/api/task-records"):
+		g.listPage(w, r)
+	case r.Method == "POST" && r.URL.Path == "/api/task-title":
+		var label TaskLabel
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096))
+		d.DisallowUnknownFields()
+		if d.Decode(&label) != nil || d.Decode(new(any)) != io.EOF {
+			errorJSON(w, 400, "invalid task title")
 			return
 		}
-		for i := range rows {
-			rows[i].EstimateUnpriced(g.Config)
+		label.Source = "manual"
+		label.Truncated = false
+		if err := g.Store.SaveTaskLabel(label, true); err != nil {
+			errorJSON(w, 400, err.Error())
+			return
 		}
-		jsonResponse(w, rows)
+		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/summary":
 		v, err := g.Store.Summary(g.Config)
 		if err != nil {
@@ -93,15 +90,17 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, v)
 	case r.Method == "GET" && r.URL.Path == "/api/feedback":
-		v, err := g.Store.Feedbacks()
+		v, err := g.Store.FeedbackViews()
 		if err != nil {
 			errorJSON(w, 500, "could not read feedback")
 			return
 		}
 		jsonResponse(w, v)
+	case r.Method == "GET" && r.URL.Path == "/api/rubrics":
+		jsonResponse(w, QualityRubrics())
 	case r.Method == "POST" && r.URL.Path == "/api/feedback":
 		var f Feedback
-		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8192))
+		d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 24<<10))
 		d.DisallowUnknownFields()
 		if d.Decode(&f) != nil || d.Decode(new(any)) != io.EOF {
 			errorJSON(w, 400, "invalid feedback")
@@ -113,7 +112,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/info":
-		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model})
+		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "pages-v1"})
 	default:
 		errorJSON(w, 404, "endpoint not found")
 	}
@@ -195,6 +194,11 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		errorJSON(w, 503, "request ledger unavailable")
 		return
 	}
+	if g.Config.StoreTaskSummaries && rec.Class == "main" && rec.Agent == "" && rec.Prompt != "" && req.Text != "" {
+		if err := g.Store.SaveTaskLabel(TaskLabel{Session: rec.Session, Prompt: rec.Prompt, Title: req.Text, Source: "request"}, false); err != nil {
+			g.logError("failed to save task summary")
+		}
+	}
 	defer func() {
 		rec.DurationMS = time.Since(started).Milliseconds()
 		if rec.Actual != "" {
@@ -211,11 +215,13 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	}()
 	tier, reason, confidence := Rule(req)
 	classified := false
-	if tier == "" && g.Config.Classifier.Enabled && (g.Config.Mode == "auto" || g.Config.Mode == "shadow") {
+	skip := classifierSkip(g.Config, req, b, tier)
+	if skip == "" {
 		tier, reason, confidence = g.classify(httpReq.Context(), rec, req)
 		classified = true
 	}
 	rec.Decision = Decide(g.Config, req, b, tier, reason, confidence)
+	rec.Decision.ClassifierSkipReason = skip
 	if classified {
 		rec.Decision.Classifier = "low_model"
 	}
@@ -304,6 +310,7 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	}
 	if stream {
 		rec.Usage = obs.Usage
+		rec.StopReason = obs.StopReason
 		rec.Complete = readOK && resp.StatusCode == 200 && obs.Complete()
 		if obs.StreamError {
 			rec.Error = "upstream_stream_error"
@@ -321,6 +328,9 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 			StopReason *string         `json:"stop_reason"`
 		}
 		if json.Unmarshal(capture.Bytes(), &msg) == nil {
+			if msg.StopReason != nil {
+				rec.StopReason = *msg.StopReason
+			}
 			usageErr := rec.Usage.Merge(msg.Usage)
 			rec.Complete = readOK && resp.StatusCode == 200 && msg.Type == "message" && msg.StopReason != nil && usageErr == nil
 			if msg.Model != "" {
@@ -334,6 +344,6 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		rec.Error = "response_observation_limit"
 	}
 	if resp.StatusCode == 200 {
-		Observe(b, req, p, rec.Actual, rec.Usage, started, rec.Complete)
+		rec.CacheObservation = Observe(b, req, p, rec.Actual, rec.Usage, rec.PricedAt, rec.Complete && rec.Model == p.Model)
 	}
 }

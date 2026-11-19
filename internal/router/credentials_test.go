@@ -1,7 +1,6 @@
 package router
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -12,9 +11,8 @@ import (
 	"testing"
 )
 
-func TestInlineConfigCredentialsAndGeneratedToken(t *testing.T) {
+func TestInlineConfigCredentials(t *testing.T) {
 	c := testConfig()
-	c.GatewayTokenEnv = ""
 	c.High.APIKeyEnv, c.Low.APIKeyEnv = "", ""
 	c.High.APIKey, c.Low.APIKey = "inline-high-key", "inline-low-key"
 	path := filepath.Join(t.TempDir(), "config.json")
@@ -29,20 +27,8 @@ func TestInlineConfigCredentialsAndGeneratedToken(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = loaded.PrepareSecrets(); err != nil {
+	if err = loaded.CheckSecrets(); err != nil {
 		t.Fatal(err)
-	}
-	token := loaded.Token()
-	decoded, err := hex.DecodeString(token)
-	if err != nil || len(decoded) != 24 {
-		t.Fatal("gateway token was not randomly generated")
-	}
-	if err = loaded.PrepareSecrets(); err != nil || loaded.Token() != token {
-		t.Fatal("preparing the same process changed its credential")
-	}
-	second := c
-	if err = second.PrepareSecrets(); err != nil || second.Token() == token {
-		t.Fatal("new process reused generated credential")
 	}
 	after, err := os.ReadFile(path)
 	if err != nil || string(before) != string(after) {
@@ -57,44 +43,33 @@ func TestCredentialPrecedenceAndEnvironmentCompatibility(t *testing.T) {
 	c := testConfig()
 	t.Setenv(c.High.APIKeyEnv, "environment-high")
 	t.Setenv(c.Low.APIKeyEnv, "environment-low")
-	t.Setenv(c.GatewayTokenEnv, "environment-gateway-token")
-	if err := c.PrepareSecrets(); err != nil {
+	if err := c.CheckSecrets(); err != nil {
 		t.Fatal(err)
 	}
-	if c.High.Key() != "environment-high" || c.Low.Key() != "environment-low" || c.Token() != "environment-gateway-token" {
+	if c.High.Key() != "environment-high" || c.Low.Key() != "environment-low" {
 		t.Fatal("old environment configuration stopped working")
 	}
 	c.High.APIKey, c.Low.APIKey = "inline-high", "inline-low"
-	c.GatewayToken = "inline-gateway-token"
-	if err := c.PrepareSecrets(); err != nil {
+	if err := c.CheckSecrets(); err != nil {
 		t.Fatal(err)
 	}
-	if c.High.Key() != "inline-high" || c.Low.Key() != "inline-low" || c.Token() != "inline-gateway-token" {
+	if c.High.Key() != "inline-high" || c.Low.Key() != "inline-low" {
 		t.Fatal("environment overrode explicit config credentials")
 	}
-	// An unset old gateway_token_env no longer requires manual setup.
-	c.GatewayToken = ""
-	t.Setenv(c.GatewayTokenEnv, "")
-	if err := c.PrepareSecrets(); err != nil || len(c.Token()) != 48 {
-		t.Fatal("missing optional gateway environment variable prevented startup")
-	}
+
 }
 
-func TestMissingProviderKeyAndShortGatewayCredential(t *testing.T) {
+func TestMissingProviderKey(t *testing.T) {
 	c := testConfig()
 	c.High.APIKeyEnv, c.Low.APIKeyEnv = "", ""
 	c.Low.APIKey = "inline-low"
 	if err := c.Validate(); err == nil {
 		t.Fatal("missing high credential source accepted")
 	}
-	if err := c.PrepareSecrets(); err == nil || !strings.Contains(err.Error(), "high: set api_key") {
+	if err := c.CheckSecrets(); err == nil || !strings.Contains(err.Error(), "high: set api_key") {
 		t.Fatal("missing high credential was not explained")
 	}
-	c.High.APIKey = "inline-high"
-	c.GatewayToken = "short"
-	if err := c.PrepareSecrets(); err == nil {
-		t.Fatal("explicit invalid gateway token silently replaced")
-	}
+
 }
 
 func TestInlineKeysUsedUpstreamAndKeptOutOfStatistics(t *testing.T) {
@@ -113,13 +88,12 @@ func TestInlineKeysUsedUpstreamAndKeptOutOfStatistics(t *testing.T) {
 			c := g.Config
 			c.Mode = tier
 			c.High.APIKey, c.Low.APIKey = "inline-high-secret", "inline-low-secret"
-			c.High.APIKeyEnv, c.Low.APIKeyEnv, c.GatewayTokenEnv = "", "", ""
-			if err := c.PrepareSecrets(); err != nil {
+			c.High.APIKeyEnv, c.Low.APIKeyEnv = "", ""
+			if err := c.CheckSecrets(); err != nil {
 				t.Fatal(err)
 			}
 			g = NewGateway(c, s)
 			req := request(sample)
-			req.Header.Set("Authorization", "Bearer "+c.Token())
 			rr := httptest.NewRecorder()
 			g.ServeHTTP(rr, req)
 			if rr.Code != http.StatusOK {
@@ -134,13 +108,12 @@ func TestInlineKeysUsedUpstreamAndKeptOutOfStatistics(t *testing.T) {
 			}
 			for _, path := range []string{"/api/info", "/api/records", "/api/summary"} {
 				req = httptest.NewRequest("GET", "http://localhost"+path, nil)
-				req.Header.Set("Authorization", "Bearer "+c.Token())
 				rr = httptest.NewRecorder()
 				g.ServeHTTP(rr, req)
 				if rr.Code != http.StatusOK {
 					t.Fatalf("statistics request failed: %d", rr.Code)
 				}
-				for _, secret := range []string{c.High.APIKey, c.Low.APIKey, c.Token()} {
+				for _, secret := range []string{c.High.APIKey, c.Low.APIKey} {
 					if strings.Contains(rr.Body.String(), secret) {
 						t.Fatal("statistics exposed a credential")
 					}

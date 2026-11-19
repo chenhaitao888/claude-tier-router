@@ -3,38 +3,130 @@
 <title>Claude Tier Router · 路由观察台</title>
 <style>
 :root{color-scheme:dark;--bg:#0c1017;--panel:#131a25;--line:#283345;--muted:#9cacc1;--ink:#edf3fc;--mint:#80e2be;--violet:#b5a1ff}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 ui-sans-serif,system-ui,-apple-system,sans-serif}main{max-width:1400px;margin:auto;padding:34px 32px 64px}header{display:flex;justify-content:space-between;align-items:start;gap:20px}.eyebrow{font-size:11px;color:var(--mint);letter-spacing:.18em}h1{font-size:32px;letter-spacing:-.03em;margin:6px 0}h2{font-size:17px;margin:0}p{color:var(--muted);margin:8px 0}.badge{border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--mint);font-size:12px}.auth{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:25px 0}.auth label{color:var(--muted)}input,select,textarea,button{font:inherit;color:var(--ink);background:#101722;border:1px solid var(--line);border-radius:7px;padding:9px 12px}input{width:280px}button{cursor:pointer}button:hover{border-color:var(--mint)}button.primary{background:var(--mint);color:#10271e;font-weight:650}#message{color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:22px 0}.card,.section{border:1px solid var(--line);border-radius:12px;background:var(--panel)}.card{padding:20px}.label{color:var(--muted);font-size:12px}.value{font-size:30px;line-height:1.4;font-variant-numeric:tabular-nums;letter-spacing:-.03em}.sub{font-size:12px;color:var(--muted)}.section{margin-top:20px;overflow:hidden}.section-head{padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:15px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{text-align:left;padding:13px 20px;border-top:1px solid var(--line);font-size:12px}th{color:var(--muted);font-weight:500}tr:hover td{background:#172130}.tier{font-size:11px;padding:3px 8px;border-radius:5px;display:inline-block;background:#293044;color:var(--violet)}.tier.low{color:var(--mint);background:#15342e}.why{white-space:normal;max-width:300px;min-width:180px}.smallbtn{padding:4px 9px;font-size:12px}.empty{padding:32px;text-align:center;color:var(--muted)}.bar{height:6px;background:var(--violet);border-radius:5px;margin:12px 0 7px;overflow:hidden}.bar span{display:block;height:100%;background:var(--mint)}.feedback{display:grid;grid-template-columns:1fr 1fr 130px 2fr auto;gap:10px;padding:0 22px 22px}.feedback input{width:100%;min-width:0}dialog{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(900px,94vw)}dialog::backdrop{background:#0009}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.warn{color:#f2bd7b}.foot{font-size:12px;margin-top:20px}@media(max-width:850px){main{padding:22px 16px}.cards{grid-template-columns:repeat(2,1fr)}header{display:block}.feedback{grid-template-columns:1fr 1fr}.value{font-size:25px}.badge{display:inline-block;margin-top:10px}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:14px/1.65 ui-sans-serif,system-ui,-apple-system,sans-serif}main{max-width:1400px;margin:auto;padding:34px 32px 64px}header{display:flex;justify-content:space-between;align-items:start;gap:20px}.eyebrow{font-size:11px;color:var(--mint);letter-spacing:.18em}h1{font-size:32px;letter-spacing:-.03em;margin:6px 0}h2{font-size:17px;margin:0}p{color:var(--muted);margin:8px 0}.badge{border:1px solid var(--line);border-radius:20px;padding:5px 12px;color:var(--mint);font-size:12px}.toolbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:25px 0}input,select,textarea,button{font:inherit;color:var(--ink);background:#101722;border:1px solid var(--line);border-radius:7px;padding:9px 12px}input{width:280px}button{cursor:pointer}button:hover{border-color:var(--mint)}button.primary{background:var(--mint);color:#10271e;font-weight:650}#message{color:var(--muted)}.cards{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin:22px 0}.card,.section{border:1px solid var(--line);border-radius:12px;background:var(--panel)}.card{padding:20px}.label{color:var(--muted);font-size:12px}.value{font-size:30px;line-height:1.4;font-variant-numeric:tabular-nums;letter-spacing:-.03em}.sub{font-size:12px;color:var(--muted)}.section{margin-top:20px;overflow:hidden}.section-head{padding:20px 22px;display:flex;justify-content:space-between;align-items:center;gap:15px}.scroll{overflow:auto}table{width:100%;border-collapse:collapse;white-space:nowrap}th,td{text-align:left;padding:13px 20px;border-top:1px solid var(--line);font-size:12px}th{color:var(--muted);font-weight:500}tr:hover td{background:#172130}.tier{font-size:11px;padding:3px 8px;border-radius:5px;display:inline-block;background:#293044;color:var(--violet)}.tier.low{color:var(--mint);background:#15342e}.why{white-space:normal;max-width:300px;min-width:180px}.smallbtn{padding:4px 9px;font-size:12px}.empty{padding:32px;text-align:center;color:var(--muted)}.bar{height:6px;background:var(--violet);border-radius:5px;margin:12px 0 7px;overflow:hidden}.bar span{display:block;height:100%;background:var(--mint)}.feedback{display:grid;grid-template-columns:1fr 1fr 130px 2fr auto;gap:10px;padding:0 22px 22px}.feedback input{width:100%;min-width:0}dialog{color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:12px;width:min(900px,94vw)}dialog::backdrop{background:#0009}pre{white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px}.warn{color:#f2bd7b}.foot{font-size:12px;margin-top:20px}@media(max-width:850px){main{padding:22px 16px}.cards{grid-template-columns:repeat(2,1fr)}header{display:block}.feedback{grid-template-columns:1fr 1fr}.value{font-size:25px}.badge{display:inline-block;margin-top:10px}}
 
 .share-grid{display:grid;grid-template-columns:1fr 1fr;gap:24px;padding:0 22px 22px}.share-track{height:12px;border-radius:8px;display:flex;overflow:hidden;background:var(--line);margin:12px 0}.share-high{background:var(--violet)}.share-low{background:var(--mint)}.share-legend{display:flex;justify-content:space-between;gap:12px;font-variant-numeric:tabular-nums}.high-label{color:var(--violet)}.low-label{color:var(--mint)}.usage-note{padding:0 22px 18px;font-size:12px;color:var(--muted)}.costs{font-size:24px}.summary-hint{padding:12px 22px;border-top:1px solid var(--line);color:var(--muted);font-size:12px}#history-cost{margin-top:6px}.usage-scope{max-width:240px}@media(max-width:650px){.share-grid{grid-template-columns:1fr}.section-head{align-items:start;flex-wrap:wrap}.costs{font-size:20px}.share-legend{font-size:12px}}
-</style>
+.criteria{padding:0 22px 18px;display:grid;gap:12px}.criterion{display:grid;grid-template-columns:1fr 120px;gap:8px}.criterion textarea{grid-column:1/-1;min-height:66px;background:#101824;color:inherit;border:1px solid #2a394a;border-radius:8px;padding:10px;resize:vertical;width:100%}.criterion small{display:block;color:#9eb1c6;margin-top:5px}.quality-controls{padding:0 22px 14px;display:flex;gap:14px;flex-wrap:wrap;align-items:center}.quality-controls select{max-width:100%}.task-title{display:block;font-size:15px;line-height:1.55;margin-bottom:5px;white-space:normal;overflow-wrap:anywhere}.task-sub{font-size:12px;color:var(--muted);line-height:1.6}.task-question{min-width:260px;max-width:440px}.task-actions{white-space:nowrap}.task-actions button{margin:3px}.review-target{margin:0 22px 18px;padding:16px;border:1px solid var(--mint);border-radius:10px;background:#102720}.review-target strong{display:block;font-size:18px;margin:6px 0;overflow-wrap:anywhere}.review-target details{font-size:12px;margin-top:10px;overflow-wrap:anywhere}.review-target p{margin:6px 0}.feedback{grid-template-columns:150px 1fr auto}.section>summary{cursor:pointer;list-style-position:inside}.title-form{display:grid;gap:14px}.title-form input{width:100%}#review-id{white-space:pre-wrap;overflow-wrap:anywhere}#feedback-status{padding:0 22px 14px;color:var(--mint)}[hidden]{display:none!important}@media(max-width:700px){.feedback{grid-template-columns:1fr}.task-question{min-width:200px}.review-target{margin:0 12px 12px}.review-target strong{font-size:16px}}.pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;flex-wrap:wrap;padding:14px 22px;border-top:1px solid var(--line)}.pager label,.pager span{font-size:12px;color:var(--muted)}.pager select{padding:5px 9px}.pager button{padding:5px 10px}button:disabled{opacity:.45;cursor:default}</style>
 <main>
 <header><div><div class="eyebrow">CLAUDE TIER ROUTER / LOCAL</div><h1>看清每一次模型选择</h1><p>逐请求路由、缓存成本与任务反馈，放在同一条时间线上。</p></div><span class="badge" id="mode">尚未连接</span></header>
-<form class="auth" id="login"><label for="token">本地网关凭证</label><input id="token" type="password" autocomplete="off" placeholder="启动终端中的 Dashboard login token" required><button class="primary">连接统计</button><button type="button" id="refresh">刷新</button><span id="message" role="status">数据保存在本地 SQLite。</span></form>
+<div class="toolbar"><button type="button" id="refresh">刷新统计</button><span id="message" role="status">正在加载本地数据…</span></div>
 <div class="cards">
 <div class="card"><div class="label">已记录费用 · 分币种</div><div class="value costs" id="cost">—</div><div class="sub" id="unknown">包含主请求与分类开销</div><div class="sub" id="history-cost"></div></div>
 <div class="card"><div class="label">推理请求</div><div class="value" id="requests">—</div><div class="sub" id="complete">接口完成不等于任务通过</div></div>
 <div class="card"><div class="label">廉价 / 高级 · 请求占比</div><div class="value" id="split">—</div><div class="bar"><span id="mix" style="width:0%"></span></div><div class="sub" id="classifier">分类器开销独立记录</div></div>
 <div class="card"><div class="label">人工验收 · 通过 / 失败</div><div class="value" id="quality">—</div><div class="sub" id="unrated">未评估的任务保持未知</div></div>
 </div>
+<section class="section" aria-labelledby="tasks-heading"><div class="section-head"><div><h2 id="tasks-heading">我的问题</h2><span class="sub">一次提问一行，评价这次任务的最终结果</span></div><span class="sub" id="task-count">尚未连接</span></div>
+<div class="scroll"><table><thead><tr><th>问题 / 开始时间</th><th>会话</th><th>模型 / 请求数</th><th>本问题费用</th><th>响应状态 / 验收</th><th>操作</th></tr></thead><tbody id="task-rows"></tbody></table><div class="empty" id="tasks-empty">连接后显示问题列表。</div></div>
+<div class="pager" aria-label="问题列表分页"><label>每页 <select id="tasks-page-size"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select> 条</label><span id="tasks-page-info"></span><button type="button" id="tasks-prev">上一页</button><button type="button" id="tasks-next">下一页</button></div>
+<div class="usage-note" id="task-privacy"></div><div class="usage-note" id="task-unattributed"></div></section>
+<section class="section" id="review-section"><div class="section-head"><h2>问题验收</h2><span class="sub">反馈关联整次提问，重复保存会更新同一份评价</span></div>
+<div class="usage-note" id="review-empty">请先在“我的问题”中点击“评价此问题”。没有摘要的历史任务请先补充名称。</div>
+<div id="review-panel" hidden><div class="review-target"><span class="sub">正在评价这个问题</span><strong id="review-title"></strong><p class="task-sub" id="review-meta"></p><details><summary>查看完整关联标识</summary><div id="review-id"></div></details></div>
+<div class="quality-controls"><label>验收标准 <select id="rubric"><option value="">快速人工评价</option></select></label><span class="sub" id="quality-evidence-summary"></span></div><div class="criteria" id="quality-checks"></div>
+<form id="feedback" class="feedback"><input id="session" type="hidden"><input id="prompt" type="hidden"><select id="outcome" aria-label="验收结果"><option value="unknown">未确定</option><option value="passed">通过</option><option value="failed">失败</option></select><input id="note" aria-label="验收备注" placeholder="这个问题的最终结果、返工原因或测试证据"><button id="review-save" class="primary" disabled>保存此问题的反馈</button></form>
+<div id="feedback-status" role="status"></div></div>
+<div class="scroll"><table><thead><tr><th>已评价的问题</th><th>结果</th><th>备注</th><th>来源</th></tr></thead><tbody id="feedbackRows"></tbody></table></div></section>
 <section class="section" aria-labelledby="usage-heading"><div class="section-head"><div><h2 id="usage-heading">模型使用占比</h2><span class="sub">价格未知、公司套餐同样可统计</span></div><select id="usage-scope" class="usage-scope" aria-label="用量统计范围"><option value="all">全部任务请求</option><option value="main">主任务与子代理</option><option value="background">后台辅助与压缩</option><option value="classifier">路由分类器</option></select></div>
 <div class="share-grid"><div><div class="label">请求次数占比</div><div class="share-track" role="img" id="request-share-chart"><span class="share-high" id="request-high-bar"></span><span class="share-low" id="request-low-bar"></span></div><div class="share-legend"><span class="high-label" id="request-high-label">高级 —</span><span class="low-label" id="request-low-label">廉价 —</span></div></div>
 <div><div class="label">总 token 占比</div><div class="share-track" role="img" id="token-share-chart"><span class="share-high" id="token-high-bar"></span><span class="share-low" id="token-low-bar"></span></div><div class="share-legend"><span class="high-label" id="token-high-label">高级 —</span><span class="low-label" id="token-low-label">廉价 —</span></div></div></div>
 <div class="scroll"><table><thead><tr><th>模型档位</th><th>请求数 / 占比</th><th>输入 tokens（含缓存）</th><th>其中缓存读 / 写</th><th>输出 tokens</th><th>总 tokens / 占比</th></tr></thead><tbody id="usage-rows"></tbody></table></div>
 <div class="summary-hint" id="usage-coverage">连接后显示统计。</div><div class="usage-note">总 token = 普通输入 + 缓存读取 + 缓存写入 + 输出。仅使用响应完整且四项用量齐全的请求计算 token 占比；请求次数仍包含失败和中断的调用。占比表示 API 使用量，不等于套餐额度或费用占比。</div></section>
-<section class="section"><div class="section-head"><h2>请求时间线</h2><span class="sub" id="cache">缓存数据尚未加载</span></div><div class="scroll"><table><thead><tr><th>时间 / 类型</th><th>任务</th><th>推荐 → 实际</th><th>决策理由</th><th>费用 / 原币</th><th>耗时</th><th>传输</th><th></th></tr></thead><tbody id="rows"></tbody></table><div class="empty" id="empty">连接后显示最近 500 条请求。使用 demo 命令可以查看模拟数据。</div></div></section>
-<section class="section"><div class="section-head"><h2>任务验收</h2><span class="sub">选择请求的“评价”，填写任务实际结果</span></div>
-<form id="feedback" class="feedback"><input id="session" aria-label="会话 ID" placeholder="会话 ID" required><input id="prompt" aria-label="提示 ID" placeholder="提示 ID" required><select id="outcome" aria-label="验收结果"><option value="unknown">未确定</option><option value="passed">通过</option><option value="failed">失败</option></select><input id="note" aria-label="验收备注" placeholder="测试结果、返工原因或人工判断"><button class="primary">保存反馈</button></form>
-<div class="scroll"><table><thead><tr><th>任务</th><th>结果</th><th>备注</th><th>来源</th></tr></thead><tbody id="feedbackRows"></tbody></table></div></section>
-<p class="foot">费用按请求发出时的价格快照核算，USD 与 CNY 分开统计，不自动换汇。“历史估算”使用当前配置和历史请求时间回算，保留原始记录；未知价格或缺失用量不会当作免费。金额尚未与供应商账单对账，模拟数据仅用于演示。</p>
+<details class="section" id="request-details"><summary class="section-head"><h2>逐请求明细 · 展开排查</h2><span class="sub" id="cache">缓存数据尚未加载</span></summary><div class="quality-controls"><span class="sub" id="request-filter-label">全部请求</span><button type="button" id="clear-request-filter" hidden>显示全部请求</button></div><div class="scroll"><table><thead><tr><th>时间 / 类型</th><th>任务</th><th>推荐 → 实际</th><th>决策理由</th><th>费用 / 原币</th><th>耗时</th><th>传输</th><th></th></tr></thead><tbody id="rows"></tbody></table><div class="empty" id="empty">加载后显示请求。使用 demo 命令可以查看模拟数据。</div></div><div class="pager" aria-label="请求明细分页"><label>每页 <select id="records-page-size"><option value="10">10</option><option value="20" selected>20</option><option value="50">50</option></select> 条</label><span id="records-page-info"></span><button type="button" id="records-prev">上一页</button><button type="button" id="records-next">下一页</button></div></details>
+<section class="section"><div class="section-head"><h2>路由诊断</h2><span class="sub" id="exchange-rate">汇率未配置</span></div>
+<div class="usage-note" id="routing-health">连接后显示分类结果与切换限制。</div>
+<div class="scroll"><table><thead><tr><th>缓存预测版本</th><th>有效请求</th><th>预测 / 实际读取 token</th><th>预测为零但命中</th><th>预测命中但未命中</th><th>平均绝对误差 / token</th></tr></thead><tbody id="cache-predictions"></tbody></table></div>
+<div class="usage-note" id="cache-diagnostics"></div><div class="usage-note">预测按版本分别统计，来源是本地前缀和供应商 usage；冷启动、TTL、供应商缓存策略都会影响误差。thinking 等受保护历史必须留在原模型；新提问的 prompt_id 不代表历史已清除。</div></section>
+
+<p class="foot">费用按请求发出时的价格快照核算，USD 与 CNY 分开记账；路由金额比较可按配置汇率折算，不影响原币种费用。“历史估算”使用当前配置和历史请求时间回算，保留原始记录；未知价格或缺失用量不会当作免费。金额尚未与供应商账单对账，模拟数据仅用于演示。</p>
 </main>
 <dialog id="detail"><button id="close">关闭</button><h2>请求与决策详情</h2><pre id="detailText"></pre></dialog>
+<dialog id="title-dialog"><form id="title-form" class="title-form"><h2>问题名称</h2><div class="sub" id="title-target"></div><input id="manual-title" aria-label="问题名称" maxlength="160" required><div class="sub">保存在本地，最多 80 个字；名称不会改变这个问题的关联标识。</div><div><button class="primary">保存名称</button><button type="button" id="cancel-title">取消</button></div><span id="title-status" role="status"></span></form></dialog>
 <script>
 const $=id=>document.getElementById(id);
-let token=sessionStorage.getItem('router-token')||'';$('token').value=token;
+sessionStorage.removeItem('router-token');
 const money=(x,currency='USD')=>x==null?'未知':(currency==='CNY'?'¥':'$')+x.toFixed(6);
 const pct=x=>x==null?'—':(100*x).toFixed(1)+'%';
 const amounts=values=>Object.entries(values||{}).sort(([a],[b])=>a.localeCompare(b)).map(([currency,amount])=>money(amount,currency)).join(' · ');
-let summaryData=null;
+let summaryData=null;let rubrics=[];let taskData={tasks:[],total_tasks:0,unattributed_requests:0};let selectedTask=null;let requestFilter=null;let feedbackBusy=false;let titleTask=null;let infoData={};const reviewDrafts=new Map();const taskCache=new Map();
+const paging={tasks:{page:1,page_size:20,total:0,total_pages:1},records:{page:1,page_size:20,total:0,total_pages:1}};
+let tasksLoad=0,recordsLoad=0;
+const taskKey=t=>JSON.stringify([t.session_id,t.prompt_id]);
+const taskName=t=>t?.label?.title?(t.label.title+(t.label.truncated?'…':'')):'历史问题（未记录摘要）';
+const outcomeLabel=value=>({passed:'通过',failed:'失败',unknown:'未确定'})[value]||'未评价';
+const taskTime=t=>new Date(t.started_at).toLocaleString();
+function taskFor(record){return taskCache.get(taskKey(record))}
+function updateReviewTarget(){
+ $('review-panel').hidden=!selectedTask;$('review-empty').hidden=!!selectedTask;$('review-save').disabled=!selectedTask||feedbackBusy;
+ if(!selectedTask)return;
+ $('review-title').textContent=taskName(selectedTask);
+ $('review-meta').textContent=taskTime(selectedTask)+' · 会话 '+selectedTask.session_id.slice(0,8)+' · '+selectedTask.main_requests+' 次主请求'+(selectedTask.classifier_requests?' + '+selectedTask.classifier_requests+' 次分类调用':'')+'；本次评价覆盖整道问题的最终结果。';
+ $('review-id').textContent='会话 ID：'+selectedTask.session_id+'\n提问 ID：'+selectedTask.prompt_id;
+}
+function chooseTask(task){
+ if(feedbackBusy||!task.label)return;
+ if(selectedTask)reviewDrafts.set(taskKey(selectedTask),{note:$('note').value,outcome:$('outcome').value,rubric:$('rubric').value,checks:qualityChecks()});
+ selectedTask=task;const saved=reviewDrafts.get(taskKey(task))||task.feedback;
+ $('session').value=task.session_id;$('prompt').value=task.prompt_id;$('note').value=saved?.note||'';$('outcome').value=saved?.outcome||'unknown';$('rubric').value=saved?.rubric||'';renderCriteria(saved?.checks||[]);
+ $('feedback-status').textContent='';updateReviewTarget();$('review-section').scrollIntoView({behavior:'smooth',block:'start'});
+}
+function editTaskTitle(task){if(feedbackBusy)return;titleTask=task;$('manual-title').value=task.label?.title||'';$('title-target').textContent=taskTime(task)+' · 会话 '+task.session_id.slice(0,8)+' · 提问 '+task.prompt_id.slice(0,8);$('title-status').textContent='';$('title-dialog').showModal();$('manual-title').focus()}
+function renderTasks(){
+ $('task-rows').replaceChildren();$('tasks-empty').hidden=taskData.tasks.length>0;$('task-count').textContent='共 '+taskData.total_tasks+' 个问题';
+ $('task-privacy').textContent=infoData.task_summaries_enabled?'已开启本地问题摘要：记录提问前 80 个字。相同问题在不同会话中分别显示。':'未开启自动问题摘要；可为历史任务手动填写名称。';
+ $('task-unattributed').textContent='另有 '+taskData.unattributed_requests+' 次后台或未关联请求，不作为可评价问题。问题费用包含已关联的后台与分类调用；未知费用和历史估算单独标注。';
+ const states={response_finished:'回答已结束',transport_complete:'传输完整',awaiting_followup:'等待后续请求',in_progress:'请求进行中',interrupted:'请求中断或失败',output_limited:'达到输出上限'};
+ for(const t of taskData.tasks){
+  const tr=document.createElement('tr');tr.dataset.taskKey=taskKey(t);const title=cell(tr,'','task-question');const name=document.createElement('strong');name.className='task-title';name.textContent=taskName(t);const date=document.createElement('span');date.className='task-sub';date.textContent=taskTime(t)+(t.label?.truncated?' · 摘要前 80 字':'');title.append(name,date);
+  const session=cell(tr,t.session_id.slice(0,8));session.title='完整会话 ID：'+t.session_id+'；提问 ID：'+t.prompt_id;
+  cell(tr,'Opus '+t.high_requests+' / Flash '+t.low_requests+' 次'+(t.classifier_requests?' · 分类 '+t.classifier_requests+' 次':''));
+  let cost=amounts(t.costs)||'暂无已核算费用';if(Object.keys(t.retrospective_estimated_costs||{}).length)cost+='；历史估算 '+amounts(t.retrospective_estimated_costs);if(t.unknown_cost_requests)cost+='；'+t.unknown_cost_requests+' 条费用未知';cell(tr,cost,'why');
+  cell(tr,(states[t.state]||t.state)+' / '+outcomeLabel(t.feedback?.outcome));const actions=cell(tr,'','task-actions');
+  const review=document.createElement('button');review.className='smallbtn task-review';review.textContent=t.feedback?'更新评价':'评价此问题';review.disabled=!t.label||feedbackBusy;review.onclick=()=>chooseTask(t);
+  const records=document.createElement('button');records.className='smallbtn';records.textContent='查看请求';records.onclick=()=>showTaskRequests(t);
+  const rename=document.createElement('button');rename.className='smallbtn';rename.textContent=t.label?'改名称':'补充名称';rename.disabled=feedbackBusy;rename.onclick=()=>editTaskTitle(t);actions.append(review,' ',records,' ',rename);$('task-rows').append(tr);
+ }
+ if(selectedTask){const current=taskFor(selectedTask);if(current)selectedTask=current}updateReviewTarget();
+}
+function renderRecords(records){
+ $('rows').replaceChildren();$('empty').hidden=records.length>0;
+ $('request-filter-label').textContent=requestFilter?'当前问题：'+taskName(requestFilter)+' · 会话 '+requestFilter.session_id.slice(0,8)+' · 共 '+paging.records.total+' 条':'全部请求 · 共 '+paging.records.total+' 条 · 每条明细仅供排查';$('clear-request-filter').hidden=!requestFilter;
+ for(const r of records){
+  const tr=document.createElement('tr');cell(tr,new Date(r.started_at).toLocaleTimeString()+' / '+r.kind);const t=r.task_label?{label:r.task_label}:taskFor(r);cell(tr,r.prompt_id?(t?taskName(t):'历史问题 '+r.prompt_id.slice(0,12)):'后台 / 未关联','why');
+  const td=cell(tr,tier(r.decision.recommended)+' → ');const badge=document.createElement('span');badge.className='tier '+(r.actual_tier==='low'?'low':'');badge.textContent=tier(r.actual_tier);td.append(badge);
+  cell(tr,(r.decision.reasons||[]).map(x=>reasons[x]||x).join(' · '),'why');const estimate=r.retrospective_estimate;const cost=cell(tr,r.cost_amount!=null?money(r.cost_amount,r.cost_currency):r.cost_usd!=null?money(r.cost_usd):estimate?money(estimate.amount,estimate.currency)+' · 历史估算':'未知');cost.title=r.cost_status;
+  cell(tr,(r.duration_ms/1000).toFixed(2)+'s');cell(tr,r.error||(r.stop_reason==='max_tokens'?'达到输出上限':r.stop_reason==='model_context_window_exceeded'?'达到上下文上限':r.complete?'传输完整':'进行中'));
+  const action=cell(tr,'');const detail=document.createElement('button');detail.className='smallbtn';detail.textContent='详情';detail.onclick=()=>{$('detailText').textContent=JSON.stringify(r,null,2);$('detail').showModal()};action.append(detail);$('rows').append(tr);
+ }
+}
+function pageQuery(kind){return new URLSearchParams({page:paging[kind].page,page_size:paging[kind].page_size})}
+function renderPager(kind){
+ const p=paging[kind];const start=p.total?(p.page-1)*p.page_size+1:0;
+ $(kind+'-page-info').textContent='第 '+p.page+' / '+p.total_pages+' 页 · '+start+'–'+Math.min(p.page*p.page_size,p.total)+' / '+p.total+' 条';
+ $(kind+'-page-size').value=String(p.page_size);$(kind+'-prev').disabled=p.page<=1;$(kind+'-next').disabled=p.page>=p.total_pages;
+}
+function applyPage(kind,data){for(const key of ['page','page_size','total','total_pages'])paging[kind][key]=data[key];renderPager(kind)}
+async function loadTasks(){
+ const version=++tasksLoad;const data=await api('/api/tasks?'+pageQuery('tasks'));if(version!==tasksLoad)return;
+ taskData=data;for(const t of data.tasks)taskCache.set(taskKey(t),t);applyPage('tasks',data);renderTasks();
+}
+async function loadRecords(){
+ const version=++recordsLoad;const query=pageQuery('records');const filter=requestFilter;
+ if(filter){query.set('session_id',filter.session_id);query.set('prompt_id',filter.prompt_id)}
+ const data=await api((filter?'/api/task-records?':'/api/records?')+query);if(version!==recordsLoad)return;
+ applyPage('records',data);renderRecords(data.records);
+}
+async function showTaskRequests(task,reveal=true){
+ try{requestFilter=task;paging.records.page=1;await loadRecords();if(reveal){$('request-details').open=true;$('request-details').scrollIntoView({behavior:'smooth',block:'start'})}}catch(e){$('message').textContent=e.message}
+}
+for(const kind of ['tasks','records']){
+ const load=kind==='tasks'?loadTasks:loadRecords;
+ const change=async()=>{try{await load()}catch(e){$('message').textContent=e.message}};
+ $(kind+'-page-size').onchange=()=>{paging[kind].page_size=Number($(kind+'-page-size').value);paging[kind].page=1;change()};
+ $(kind+'-prev').onclick=()=>{paging[kind].page=Math.max(1,paging[kind].page-1);change()};
+ $(kind+'-next').onclick=()=>{paging[kind].page=Math.min(paging[kind].total_pages,paging[kind].page+1);change()};renderPager(kind);
+}
+
 function renderUsage(){
  const scope=summaryData?.usage_scopes?.[$('usage-scope').value];if(!scope)return;
  $('usage-rows').replaceChildren();
@@ -51,40 +143,69 @@ function renderUsage(){
  $('usage-coverage').textContent=scope.requests+' 次已分配模型的请求 · '+scope.total_tokens.toLocaleString()+' tokens · 用量完整 '+scope.token_requests+'/'+scope.requests+' 次'+(scope.missing_token_requests?'；'+scope.missing_token_requests+' 次用量不完整，未计入 token 占比':'')+(summaryData.undispatched_requests?'；另有 '+summaryData.undispatched_requests+' 次未派发请求，不计入占比':'');
 }
 
+function renderCriteria(saved=[]){
+ const rubric=rubrics.find(r=>r.id===$('rubric').value);$('quality-checks').replaceChildren();$('outcome').disabled=!!rubric;
+ if(!rubric)return;
+ for(const c of rubric.criteria){
+  const row=document.createElement('div');row.className='criterion';row.dataset.id=c.id;
+  const label=document.createElement('label');label.textContent=c.label;const hint=document.createElement('small');hint.textContent=c.hint;label.append(hint);
+  const select=document.createElement('select');select.setAttribute('aria-label',c.label+' 结果');
+  for(const [v,text] of [['unknown','未确定'],['passed','通过'],['failed','失败']]){const option=document.createElement('option');option.value=v;option.textContent=text;select.append(option)}
+  const evidence=document.createElement('textarea');evidence.setAttribute('aria-label',c.label+' 证据');evidence.placeholder='文件 / 文档位置，或实际测试命令和结果；不要填写密钥';evidence.maxLength=500;
+  const prior=saved.find(x=>x.id===c.id);if(prior){select.value=prior.outcome;evidence.value=prior.evidence}
+  select.onchange=updateQualityOutcome;row.append(label,select,evidence);$('quality-checks').append(row);
+ }
+ updateQualityOutcome();
+}
+function qualityChecks(){return [...$('quality-checks').children].map(row=>({id:row.dataset.id,outcome:row.querySelector('select').value,evidence:row.querySelector('textarea').value.trim()}))}
+function updateQualityOutcome(){const checks=qualityChecks();$('outcome').value=checks.some(c=>c.outcome==='failed')?'failed':checks.every(c=>c.outcome==='passed')?'passed':'unknown'}
 const reasons={prices_unknown_use_recommendation:'价格未知，按能力建议选择',currency_not_comparable:'币种不同，按能力建议选择',simple_task_rule:'简单任务规则',complexity_rule:'复杂任务规则',uncertain:'规则无法确定',uncertain_use_high:'不确定，保守使用 Opus',prices_unknown_use_high:'价格未配置',high_estimated_cheaper:'Opus 缓存后预计更便宜',switch_saving_below_threshold:'切换收益不足',history_compatibility_lock:'历史兼容性锁定',shadow_executes_high:'观察模式执行 Opus',fixed_mode:'固定模型模式',low_capability_or_context_limit:'廉价模型能力或上下文限制',tool_error_signal:'工具失败信号',classifier_simple:'分类器建议简单',classifier_complex:'分类器建议复杂'};
-async function api(path,options={}){const r=await fetch(path,{...options,headers:{Authorization:'Bearer '+token,'Content-Type':'application/json',...(options.headers||{})}});const body=await r.json();if(!r.ok)throw Error(body.error?.message||'请求失败');return body}
+Object.assign(reasons,{protected_history_requires_same_model:'受保护历史须使用原模型',text_history_switch_disabled:'文本历史切换已关闭',unknown_history_origin:'历史来源模型未知',low_protected_content:'廉价模型不可接收异源受保护内容',low_unsupported_content:'廉价模型不支持该内容',low_context_limit:'廉价模型上下文不足',high_context_limit:'高级模型上下文不足',configured_exchange_rate:'按配置汇率比较',rule_decided:'规则已有结论',classifier_disabled:'分类器未启用',classifier_invalid_decision:'分类结果无效，保守回退',classifier_uncertain:'分类器不确定，保守回退'});
+function renderHealth(s,info){
+ const fx=info.exchange_rate;$('exchange-rate').textContent=fx?'1 USD = '+fx.cny_per_usd+' CNY · '+fx.version+'（配置值）':'未配置汇率，跨币种金额不可比';
+ const health=s.routing_health||{};
+ const labels={accepted:'分类有效',uncertain:'置信不足',invalid:'分类无效',failed:'调用失败',legacy_unclassified:'旧记录未采集分类诊断',missing_confidence:'缺少置信度',missing_tier:'缺少档位',missing_reason:'缺少理由',empty_output:'空输出',invalid_json:'JSON 无效',expected_object:'未返回对象',duplicate_field:'字段重复',unknown_field:'多余字段',trailing_content:'JSON 外有多余内容',invalid_field_type:'字段类型错误',invalid_tier:'档位无效',invalid_reason:'理由枚举无效',confidence_out_of_range:'置信度越界',inconsistent_decision:'档位与理由矛盾',unexpected_stop_reason:'输出截断或异常停止',incomplete_response:'响应不完整'};
+ const describe=values=>Object.entries(values||{}).map(([key,n])=>key.split(':').map(part=>reasons[part]||labels[part]||part).join(' / ')+' '+n+' 次').join('；')||'暂无';
+ $('routing-health').textContent='分类结果：'+describe(health.classifier_outcomes)+'。跳过分类器：'+describe(health.classifier_skipped)+'。切换限制：'+describe(health.switch_blocked)+'。达到输出或上下文上限：'+(health.output_limited_requests||0)+' 次（已记录停止原因的新请求）。';
+ $('cache-predictions').replaceChildren();const diagnostics=[];
+ const cacheLabels={no_local_evidence:'本分支尚无缓存证据',cache_disabled:'缓存未启用',evidence_expired:'本地证据过期',outside_lookback:'超出断点回看范围',prefix_changed:'提示前缀变化',not_recorded:'旧记录未采集原因',parameters:'生成参数',tools:'工具定义',system:'系统提示',message_history:'消息历史'};
+ for(const [version,v] of Object.entries(health.cache_predictions||{})){
+  const misses=Object.entries(v.zero_prediction_reasons||{}).map(([reason,n])=>reason.split(/[:,]/).map(part=>cacheLabels[part]||part).join(' / ')+' '+n+' 次').join('；');diagnostics.push(version+'：工具安全上下文变化 '+(v.classifier_context_changes||0)+' 次'+(misses?'；漏预测原因 '+misses:''));
+  const tr=document.createElement('tr');cell(tr,version);cell(tr,v.requests);cell(tr,v.predicted_read_tokens.toLocaleString()+' / '+v.observed_read_tokens.toLocaleString());cell(tr,v.zero_prediction_hits);cell(tr,v.predicted_hits_missed);cell(tr,Math.round(v.absolute_error_tokens/Math.max(1,v.requests)).toLocaleString());$('cache-predictions').append(tr);
+ }
+ $('cache-diagnostics').textContent=diagnostics.join('。');
+}
+async function api(path,options={}){const r=await fetch(path,{...options,headers:{'Content-Type':'application/json',...(options.headers||{})}});const body=await r.json();if(!r.ok)throw Error(body.error?.message||'请求失败');return body}
 function cell(row,text,cls){const td=document.createElement('td');td.textContent=text;if(cls)td.className=cls;row.append(td);return td}
 function tier(value){return value==='high'?'Opus':value==='low'?'Flash':'—'}
 async function refresh(){
  try{
-  const [s,records,info,feedback]=await Promise.all([api('/api/summary'),api('/api/records'),api('/api/info'),api('/api/feedback')]);
+  const [s,info,feedback,availableRubrics]=await Promise.all([api('/api/summary'),api('/api/info'),api('/api/feedback'),api('/api/rubrics')]);
+  if(!rubrics.length){rubrics=availableRubrics;for(const r of rubrics){const o=document.createElement('option');o.value=r.id;o.textContent=r.label;$('rubric').append(o)}}
+  infoData=info;await Promise.all([loadTasks(),loadRecords()]);
+  $('quality-evidence-summary').textContent='按证据清单评价 '+s.evidence_reviews+' 个问题 · 通过 '+s.evidence_passed+' / 失败 '+s.evidence_failed+' / 未确定 '+s.evidence_unknown+'；证据由评审者填写。';
   $('mode').textContent=({shadow:'观察模式',auto:'自动路由',high:'固定 Opus',low:'固定 Flash'})[info.mode]+' · '+info.policy_version;
-  summaryData=s;renderUsage();
+  summaryData=s;renderUsage();renderHealth(s,info);
   $('cost').textContent=amounts(s.known_costs)||'暂无已核算费用';$('unknown').textContent=s.unestimated_cost_requests+' 条无法计费';$('unknown').className=s.unestimated_cost_requests?'sub warn':'sub';
   $('history-cost').textContent=s.retrospective_estimated_requests?'另有历史估算 '+amounts(s.retrospective_estimated_costs)+'（'+s.retrospective_estimated_requests+' 条）':'';
-  $('requests').textContent=s.inference_requests;$('complete').textContent=s.complete_requests+' 条响应完整';
+  $('requests').textContent=s.inference_requests;$('complete').textContent=s.complete_requests+' 条传输完整（非任务验收）';
   const all=s.usage_scopes.all;$('split').textContent=pct(all.low.request_share)+' / '+pct(all.high.request_share);$('mix').style.width=(all.low.request_share||0)*100+'%';
   $('classifier').textContent=s.low_requests+' / '+s.high_requests+' 次 · 分类器另计 '+s.classifier_requests+' 次'+(Object.keys(s.classifier_costs).length?' / '+amounts(s.classifier_costs):'');
-  $('quality').textContent=s.passed_tasks+' / '+s.failed_tasks;$('unrated').textContent=s.unevaluated_tasks+' 个任务未评估';
-  $('cache').textContent='观测缓存读取 '+s.cache_read_tokens.toLocaleString()+' tokens';
-  $('rows').replaceChildren();$('empty').hidden=records.length>0;
-  for(const r of records){
-   const tr=document.createElement('tr');cell(tr,new Date(r.started_at).toLocaleTimeString()+' / '+r.kind);
-   cell(tr,(r.prompt_id||'未关联').slice(0,14));const td=cell(tr,tier(r.decision.recommended)+' → ');
-   const badge=document.createElement('span');badge.className='tier '+(r.actual_tier==='low'?'low':'');badge.textContent=tier(r.actual_tier);td.append(badge);
-   cell(tr,(r.decision.reasons||[]).map(x=>reasons[x]||x).join(' · '),'why');
-   const estimate=r.retrospective_estimate;const cost=cell(tr,r.cost_amount!=null?money(r.cost_amount,r.cost_currency):r.cost_usd!=null?money(r.cost_usd):estimate?money(estimate.amount,estimate.currency)+' · 历史估算':'未知');cost.title=estimate?'按当前价格及历史请求时间估算；原记录未改写':r.cost_status;cell(tr,(r.duration_ms/1000).toFixed(2)+'s');cell(tr,r.complete?'完整':r.error||'进行中');
-   const action=cell(tr,'');const detail=document.createElement('button');detail.className='smallbtn';detail.textContent='详情';detail.onclick=()=>{$('detailText').textContent=JSON.stringify(r,null,2);$('detail').showModal()};action.append(detail);
-   if(r.prompt_id && r.kind==='inference'){const rate=document.createElement('button');rate.className='smallbtn';rate.textContent='评价';rate.onclick=()=>{$('session').value=r.session_id;$('prompt').value=r.prompt_id;$('note').focus()};action.append(' ',rate)}
-   $('rows').append(tr)
-  }
-  $('feedbackRows').replaceChildren();for(const f of feedback){const tr=document.createElement('tr');cell(tr,f.prompt_id);cell(tr,({passed:'通过',failed:'失败',unknown:'未确定'})[f.outcome]);cell(tr,f.note,'why');cell(tr,'人工反馈');$('feedbackRows').append(tr)}
+  $('quality').textContent=s.passed_tasks+' / '+s.failed_tasks;$('unrated').textContent=s.unevaluated_tasks+' 个问题未定论';$('cache').textContent='观测缓存读取 '+s.cache_read_tokens.toLocaleString()+' tokens';
+  $('feedbackRows').replaceChildren();for(const f of feedback){const t=f.task_label?{label:f.task_label}:taskFor(f);const tr=document.createElement('tr');cell(tr,(t?taskName(t):'历史问题 '+f.prompt_id.slice(0,12))+' · 会话 '+f.session_id.slice(0,8),'why');cell(tr,outcomeLabel(f.outcome));cell(tr,f.note,'why');const source=cell(tr,f.rubric?'人工证据清单':'快速人工评价');if(f.checks?.length){const btn=document.createElement('button');btn.className='smallbtn';btn.textContent='证据';btn.onclick=()=>{$('detailText').textContent=JSON.stringify(f,null,2);$('detail').showModal()};source.append(' ',btn)}$('feedbackRows').append(tr)}
   $('message').textContent='已更新 '+new Date().toLocaleTimeString()
  }catch(e){$('message').textContent=e.message}
 }
-$('login').onsubmit=e=>{e.preventDefault();token=$('token').value;sessionStorage.setItem('router-token',token);refresh()};
-$('usage-scope').onchange=renderUsage;
+$('usage-scope').onchange=renderUsage;$('rubric').onchange=()=>renderCriteria();
 $('refresh').onclick=refresh;$('close').onclick=()=>$('detail').close();
-$('feedback').onsubmit=async e=>{e.preventDefault();try{await api('/api/feedback',{method:'POST',body:JSON.stringify({session_id:$('session').value,prompt_id:$('prompt').value,outcome:$('outcome').value,note:$('note').value})});await refresh()}catch(e){$('message').textContent=e.message}};
-if(token)refresh();
+$('feedback').onsubmit=async e=>{
+ e.preventDefault();if(!selectedTask||feedbackBusy){$('feedback-status').textContent='请先选择要评价的问题。';return}
+ const target=selectedTask;const payload={session_id:target.session_id,prompt_id:target.prompt_id,outcome:$('outcome').value,note:$('note').value,rubric:$('rubric').value,rubric_version:rubrics.find(r=>r.id===$('rubric').value)?.version||'',checks:qualityChecks()};
+ feedbackBusy=true;renderTasks();$('feedback-status').textContent='正在保存「'+taskName(target)+'」的反馈…';
+ try{await api('/api/feedback',{method:'POST',body:JSON.stringify(payload)});reviewDrafts.delete(taskKey(target));await refresh();$('feedback-status').textContent='已保存「'+taskName(target)+'」的反馈：'+outcomeLabel(payload.outcome)}catch(e){$('feedback-status').textContent=e.message}finally{feedbackBusy=false;renderTasks()}
+};
+$('clear-request-filter').onclick=async()=>{requestFilter=null;paging.records.page=1;try{await loadRecords()}catch(e){$('message').textContent=e.message}};
+$('cancel-title').onclick=()=>$('title-dialog').close();
+$('title-form').onsubmit=async e=>{e.preventDefault();if(!titleTask)return;const target=titleTask;const button=$('title-form').querySelector('button');button.disabled=true;try{await api('/api/task-title',{method:'POST',body:JSON.stringify({session_id:target.session_id,prompt_id:target.prompt_id,title:$('manual-title').value})});$('title-dialog').close();await refresh()}catch(e){$('title-status').textContent=e.message}finally{button.disabled=false}};
+refresh();
 </script></html>

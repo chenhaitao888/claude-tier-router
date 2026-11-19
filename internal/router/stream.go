@@ -17,6 +17,7 @@ type observer struct {
 	Invalid     bool
 	StreamError bool
 	Model       string
+	StopReason  string
 }
 
 func (o *observer) Feed(p []byte) {
@@ -64,8 +65,11 @@ func (o *observer) parseLine(line []byte) {
 }
 func (o *observer) event(b []byte) {
 	var ev struct {
-		Type    string          `json:"type"`
-		Usage   json.RawMessage `json:"usage"`
+		Type  string          `json:"type"`
+		Usage json.RawMessage `json:"usage"`
+		Delta struct {
+			StopReason *string `json:"stop_reason"`
+		} `json:"delta"`
 		Message struct {
 			Usage json.RawMessage `json:"usage"`
 			Model string          `json:"model"`
@@ -84,6 +88,9 @@ func (o *observer) event(b []byte) {
 		}
 	case "message_delta":
 		o.Delta = true
+		if ev.Delta.StopReason != nil {
+			o.StopReason = *ev.Delta.StopReason
+		}
 		if o.Usage.Merge(ev.Usage) != nil {
 			o.Invalid = true
 		}

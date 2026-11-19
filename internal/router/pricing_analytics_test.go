@@ -230,8 +230,12 @@ func TestStatisticsAPIShowsEstimatesWithoutPersistingThem(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+token)
 	rr := httptest.NewRecorder()
 	g.ServeHTTP(rr, req)
-	var rows []Record
-	if json.Unmarshal(rr.Body.Bytes(), &rows) != nil || len(rows) != 1 || rows[0].Retrospective == nil || rows[0].Retrospective.Currency != "CNY" {
+	var page RecordPage
+	if err := json.Unmarshal(rr.Body.Bytes(), &page); err != nil {
+		t.Fatal(err)
+	}
+	rows := page.Records
+	if len(rows) != 1 || rows[0].Retrospective == nil || rows[0].Retrospective.Currency != "CNY" {
 		t.Fatal("history estimate not exposed")
 	}
 	if rows[0].CostAmount != nil || rows[0].CostUSD != nil {

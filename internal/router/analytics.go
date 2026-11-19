@@ -1,6 +1,9 @@
 package router
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"strings"
+)
 
 type ModelUsage struct {
 	Requests             int      `json:"requests"`
@@ -88,6 +91,98 @@ type Summary struct {
 	Failed            int                    `json:"failed_tasks"`
 	Unevaluated       int                    `json:"unevaluated_tasks"`
 	Scopes            map[string]*UsageScope `json:"usage_scopes"`
+	RoutingHealth     RoutingHealth          `json:"routing_health"`
+	EvidenceReviews   int                    `json:"evidence_reviews"`
+	EvidencePassed    int                    `json:"evidence_passed"`
+	EvidenceFailed    int                    `json:"evidence_failed"`
+	EvidenceUnknown   int                    `json:"evidence_unknown"`
+}
+
+type RoutingHealth struct {
+	OutputLimited      int                              `json:"output_limited_requests"`
+	ClassifierOutcomes map[string]int                   `json:"classifier_outcomes"`
+	ClassifierSkipped  map[string]int                   `json:"classifier_skipped"`
+	SwitchBlocked      map[string]int                   `json:"switch_blocked"`
+	CachePredictions   map[string]*CachePredictionStats `json:"cache_predictions"`
+}
+type CachePredictionStats struct {
+	Requests            int            `json:"requests"`
+	Predicted           int64          `json:"predicted_read_tokens"`
+	Observed            int64          `json:"observed_read_tokens"`
+	ZeroPredictionHits  int            `json:"zero_prediction_hits"`
+	PredictedHitsMissed int            `json:"predicted_hits_missed"`
+	AbsoluteError       int64          `json:"absolute_error_tokens"`
+	MissReasons         map[string]int `json:"zero_prediction_reasons"`
+	MetadataChanges     int            `json:"classifier_context_changes"`
+}
+
+func (h *RoutingHealth) add(r Record) {
+	if r.Kind == "classifier" {
+		status := "legacy_unclassified"
+		if r.ClassifierDiagnostic != nil {
+			status = r.ClassifierDiagnostic.Status
+			if status == "invalid" || status == "failed" {
+				status += ":" + r.ClassifierDiagnostic.Validation
+			}
+		} else if r.Error != "" {
+			status = r.Error
+		}
+		h.ClassifierOutcomes[status]++
+		return
+	}
+	if r.StopReason == "max_tokens" || r.StopReason == "model_context_window_exceeded" {
+		h.OutputLimited++
+	}
+	if reason := r.Decision.ClassifierSkipReason; reason != "" {
+		h.ClassifierSkipped[reason]++
+	}
+	if reason := r.Decision.SwitchBlockedReason; reason != "" {
+		h.SwitchBlocked[reason]++
+	}
+	if !r.Complete || !r.Usage.HasAllTokens() || (r.Actual != "high" && r.Actual != "low") {
+		return
+	}
+	version := r.Decision.CachePredictionVersion
+	if version == "" {
+		version = "legacy"
+	}
+	stats := h.CachePredictions[version]
+	if stats == nil {
+		stats = &CachePredictionStats{MissReasons: map[string]int{}}
+		h.CachePredictions[version] = stats
+	}
+	predicted := int64(r.Decision.HighCached)
+	diagnostic := r.Decision.HighCache
+	if r.Actual == "low" {
+		predicted = int64(r.Decision.LowCached)
+		diagnostic = r.Decision.LowCache
+	}
+	observed := num(r.Usage.Read)
+	stats.Requests++
+	stats.Predicted += predicted
+	stats.Observed += observed
+	if predicted == 0 && observed > 0 {
+		stats.ZeroPredictionHits++
+		reason := diagnostic.Reason
+		if reason == "" {
+			reason = "not_recorded"
+		}
+		if len(diagnostic.ChangedSections) > 0 {
+			reason += ":" + strings.Join(diagnostic.ChangedSections, ",")
+		}
+		stats.MissReasons[reason]++
+	}
+	if diagnostic.ClassifierContextChanged {
+		stats.MetadataChanges++
+	}
+	if predicted > 0 && observed == 0 {
+		stats.PredictedHitsMissed++
+	}
+	errorTokens := predicted - observed
+	if errorTokens < 0 {
+		errorTokens = -errorTokens
+	}
+	stats.AbsoluteError += errorTokens
 }
 
 func (r Record) recordedCost() *Money {
@@ -103,7 +198,8 @@ func (r Record) recordedCost() *Money {
 func (s *Store) Summary(configs ...Config) (Summary, error) {
 	out := Summary{
 		KnownCosts: map[string]float64{}, ClassifierCosts: map[string]float64{}, EstimatedCosts: map[string]float64{},
-		Scopes: map[string]*UsageScope{"all": {}, "main": {}, "background": {}, "classifier": {}},
+		Scopes:        map[string]*UsageScope{"all": {}, "main": {}, "background": {}, "classifier": {}},
+		RoutingHealth: RoutingHealth{ClassifierOutcomes: map[string]int{}, ClassifierSkipped: map[string]int{}, SwitchBlocked: map[string]int{}, CachePredictions: map[string]*CachePredictionStats{}},
 	}
 	rows, err := s.db.Query("SELECT payload FROM records")
 	if err != nil {
@@ -124,6 +220,7 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 		if len(configs) > 0 {
 			r.EstimateUnpriced(configs[0])
 		}
+		out.RoutingHealth.add(r)
 		if money := r.recordedCost(); money != nil {
 			out.KnownCosts[money.Currency] += money.Amount
 			if r.Kind == "classifier" {
@@ -164,7 +261,7 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 		out.CacheRead += num(r.Usage.Read)
 		out.InputTotal += r.Usage.TotalInput()
 		out.OutputTotal += num(r.Usage.Output)
-		if r.Prompt != "" {
+		if r.Prompt != "" && r.Class != "auxiliary" && r.Class != "compaction" {
 			tasks[r.Session+"\x00"+r.Prompt] = true
 		}
 	}
@@ -184,6 +281,17 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 	}
 	for _, f := range feedback {
 		if tasks[f.Session+"\x00"+f.Prompt] {
+			if f.Rubric != "" {
+				out.EvidenceReviews++
+				switch f.Outcome {
+				case "passed":
+					out.EvidencePassed++
+				case "failed":
+					out.EvidenceFailed++
+				default:
+					out.EvidenceUnknown++
+				}
+			}
 			switch f.Outcome {
 			case "passed":
 				out.Passed++

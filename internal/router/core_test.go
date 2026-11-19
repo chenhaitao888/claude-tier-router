@@ -16,7 +16,7 @@ func testConfig() Config {
 	low.Auth = "bearer"
 	low.Cache.Kind = "automatic"
 	low.Prices = &Prices{Version: "test", Currency: "USD", Input: 1, CacheRead: 0.01, Output: 2}
-	return Config{Listen: "127.0.0.1:0", Database: "test.db", GatewayTokenEnv: "TEST_ROUTER_TOKEN", Mode: "auto", High: p, Low: low, Policy: Policy{Version: "test-v1", AllowTextSwitch: true, MinSwitchSaving: 0.15, EstimatedOutputTokens: 100}, Classifier: ClassifierConfig{TimeoutMS: 1000, MaxChars: 6000}}
+	return Config{Listen: "127.0.0.1:0", Database: "test.db", Mode: "auto", High: p, Low: low, Policy: Policy{Version: "test-v1", AllowTextSwitch: true, MinSwitchSaving: 0.15, EstimatedOutputTokens: 100}, Classifier: ClassifierConfig{TimeoutMS: 1000, MaxChars: 6000}}
 }
 func TestReplaceModelPreservesOtherBytes(t *testing.T) {
 	raw := []byte("{\n  \"model\" : \"alias\", \"messages\": [{\"role\":\"user\",\"content\":\"<a>&你好\"}], \"future\": { \"b\":2, \"a\": 1 } }")

@@ -138,14 +138,19 @@
     }
   },
   "policy": {
-    "version": "v2",
+    "version": "v4",
     "allow_text_switch": false,
     "min_switch_saving": 0.15,
-    "estimated_output_tokens": 1024
+    "estimated_output_tokens": 1024,
+    "exchange_rate": {
+      "version": "user-fixed-2026-11-18",
+      "cny_per_usd": 6.8
+    }
   },
   "classifier": {
     "enabled": false,
     "timeout_ms": 2000,
     "max_chars": 6000
-  }
+  },
+  "store_task_summaries": false
 }

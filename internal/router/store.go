@@ -12,41 +12,47 @@ import (
 )
 
 type Record struct {
-	ID            string             `json:"id"`
-	ParentID      string             `json:"parent_id,omitempty"`
-	Kind          string             `json:"kind"`
-	Session       string             `json:"session_id"`
-	Prompt        string             `json:"prompt_id"`
-	Agent         string             `json:"agent_id"`
-	Class         string             `json:"request_class"`
-	Started       time.Time          `json:"started_at"`
-	Mode          string             `json:"mode"`
-	Policy        string             `json:"policy_version"`
-	Decision      Decision           `json:"decision"`
-	Actual        string             `json:"actual_tier"`
-	Model         string             `json:"model"`
-	Prices        *Prices            `json:"price_snapshot"`
-	HTTPStatus    int                `json:"http_status"`
-	Complete      bool               `json:"complete"`
-	Error         string             `json:"error,omitempty"`
-	DurationMS    int64              `json:"duration_ms"`
-	FirstByteMS   int64              `json:"first_byte_ms"`
-	Usage         Usage              `json:"usage"`
-	CostUSD       *float64           `json:"cost_usd"`
-	CostAmount    *float64           `json:"cost_amount"`
-	CostCurrency  string             `json:"cost_currency"`
-	PricedAt      time.Time          `json:"priced_at,omitempty"`
-	PricePeriod   string             `json:"price_period,omitempty"`
-	Retrospective *RetrospectiveCost `json:"retrospective_estimate,omitempty"`
-	CostStatus    string             `json:"cost_status"`
+	ID                   string                `json:"id"`
+	ParentID             string                `json:"parent_id,omitempty"`
+	Kind                 string                `json:"kind"`
+	Session              string                `json:"session_id"`
+	Prompt               string                `json:"prompt_id"`
+	Agent                string                `json:"agent_id"`
+	Class                string                `json:"request_class"`
+	Started              time.Time             `json:"started_at"`
+	Mode                 string                `json:"mode"`
+	Policy               string                `json:"policy_version"`
+	Decision             Decision              `json:"decision"`
+	ClassifierDiagnostic *ClassifierDiagnostic `json:"classifier_diagnostic,omitempty"`
+	Actual               string                `json:"actual_tier"`
+	Model                string                `json:"model"`
+	Prices               *Prices               `json:"price_snapshot"`
+	HTTPStatus           int                   `json:"http_status"`
+	Complete             bool                  `json:"complete"`
+	StopReason           string                `json:"stop_reason,omitempty"`
+	CacheObservation     string                `json:"cache_observation,omitempty"`
+	Error                string                `json:"error,omitempty"`
+	DurationMS           int64                 `json:"duration_ms"`
+	FirstByteMS          int64                 `json:"first_byte_ms"`
+	Usage                Usage                 `json:"usage"`
+	CostUSD              *float64              `json:"cost_usd"`
+	CostAmount           *float64              `json:"cost_amount"`
+	CostCurrency         string                `json:"cost_currency"`
+	PricedAt             time.Time             `json:"priced_at,omitempty"`
+	PricePeriod          string                `json:"price_period,omitempty"`
+	Retrospective        *RetrospectiveCost    `json:"retrospective_estimate,omitempty"`
+	CostStatus           string                `json:"cost_status"`
 }
 type Feedback struct {
-	Session string    `json:"session_id"`
-	Prompt  string    `json:"prompt_id"`
-	Outcome string    `json:"outcome"`
-	Note    string    `json:"note"`
-	Source  string    `json:"source"`
-	Updated time.Time `json:"updated_at"`
+	Session       string         `json:"session_id"`
+	Prompt        string         `json:"prompt_id"`
+	Outcome       string         `json:"outcome"`
+	Note          string         `json:"note"`
+	Source        string         `json:"source"`
+	Updated       time.Time      `json:"updated_at"`
+	Rubric        string         `json:"rubric,omitempty"`
+	RubricVersion string         `json:"rubric_version,omitempty"`
+	Checks        []QualityCheck `json:"checks,omitempty"`
 }
 type Store struct{ db *sql.DB }
 
@@ -63,7 +69,9 @@ func OpenStore(path string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS records(id TEXT PRIMARY KEY, started TEXT NOT NULL, session TEXT NOT NULL, prompt TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT NOT NULL);
  CREATE INDEX IF NOT EXISTS records_started ON records(started);
  CREATE TABLE IF NOT EXISTS feedback(session TEXT NOT NULL, prompt TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt));
- PRAGMA user_version=1;`)
+ CREATE TABLE IF NOT EXISTS task_labels(session TEXT NOT NULL, prompt TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt));
+ CREATE INDEX IF NOT EXISTS records_task ON records(session,prompt);
+ PRAGMA user_version=2;`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -112,20 +120,20 @@ func (s *Store) Feedback(f Feedback) error {
 	if f.Session == "" || f.Prompt == "" || len(f.Note) > 2000 {
 		return errors.New("session_id, prompt_id required; note max 2000 bytes")
 	}
-	if f.Outcome != "passed" && f.Outcome != "failed" && f.Outcome != "unknown" {
-		return errors.New("outcome must be passed, failed or unknown")
-	}
-	var n int
-	if err := s.db.QueryRow("SELECT count(*) FROM records WHERE session=? AND prompt=? AND kind='inference'", f.Session, f.Prompt).Scan(&n); err != nil {
+	if err := f.validateQuality(); err != nil {
 		return err
 	}
-	if n == 0 {
+	exists, err := s.taskExists(f.Session, f.Prompt)
+	if err != nil {
+		return err
+	}
+	if !exists {
 		return errors.New("task not found")
 	}
 	f.Source = "manual"
 	f.Updated = time.Now().UTC()
 	b, _ := json.Marshal(f)
-	_, err := s.db.Exec("INSERT INTO feedback VALUES(?,?,?) ON CONFLICT(session,prompt) DO UPDATE SET payload=excluded.payload", f.Session, f.Prompt, string(b))
+	_, err = s.db.Exec("INSERT INTO feedback VALUES(?,?,?) ON CONFLICT(session,prompt) DO UPDATE SET payload=excluded.payload", f.Session, f.Prompt, string(b))
 	return err
 }
 func (s *Store) Feedbacks() ([]Feedback, error) {
