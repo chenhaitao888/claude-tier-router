@@ -12,8 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 )
@@ -80,7 +78,13 @@ func run(args []string) error {
 		}
 	}()
 	if command == "claude" {
-		child := exec.Command("claude", fs.Args()...)
+		args, cleanup, err := launchArgs(fs.Args(), c, address)
+		if err != nil {
+			return err
+		}
+		defer cleanup()
+		fmt.Println("Claude Code gateway:", address, "| session settings applied")
+		child := exec.Command("claude", args...)
 		child.Stdin = os.Stdin
 		child.Stdout = os.Stdout
 		child.Stderr = os.Stderr
@@ -98,27 +102,4 @@ func run(args []string) error {
 		}
 		return err
 	}
-}
-func launchEnv(existing []string, c router.Config, address string) []string {
-	window := c.High.ContextTokens
-	if c.Low.ContextTokens < window {
-		window = c.Low.ContextTokens
-	}
-	replace := map[string]string{
-		"ANTHROPIC_BASE_URL": address, "ANTHROPIC_AUTH_TOKEN": "local-router",
-		"ANTHROPIC_MODEL": "router-auto", "ANTHROPIC_DEFAULT_OPUS_MODEL": "router-auto", "ANTHROPIC_DEFAULT_SONNET_MODEL": "router-auto", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "router-auto",
-		"CLAUDE_CODE_SUBAGENT_MODEL": "router-auto", "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": strconv.Itoa(window * 3 / 4),
-	}
-	remove := map[string]bool{"ANTHROPIC_API_KEY": true, "CLAUDE_CODE_USE_BEDROCK": true, "CLAUDE_CODE_USE_VERTEX": true, "CLAUDE_CODE_USE_FOUNDRY": true, "CLAUDE_CODE_USE_MANTLE": true, "CLAUDE_CODE_USE_ANTHROPIC_AWS": true}
-	env := []string{}
-	for _, entry := range existing {
-		key, _, _ := strings.Cut(entry, "=")
-		if _, ok := replace[key]; !ok && !remove[key] {
-			env = append(env, entry)
-		}
-	}
-	for k, v := range replace {
-		env = append(env, k+"="+v)
-	}
-	return env
 }

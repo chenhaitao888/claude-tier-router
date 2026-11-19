@@ -34,7 +34,9 @@ cp config.example.json config.json
 ./bin/router claude -config config.json
 ```
 
-`check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，只修改子进程环境，不修改 `~/.claude`。附加 Claude Code 参数放在 `--` 后面，例如 `./bin/router claude -config config.json -- --continue`。现有受管理设置和 apiKeyHelper 仍可能影响客户端身份认证，需要在 Claude Code `/status` 中确认最终连接。
+`check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，使用子进程环境及本次会话的 `--settings` 固定 Router 地址、模型别名和本地占位认证，不修改全局或项目设置文件。会话设置保存在权限为 0600 的临时文件中，子进程退出时清理。插件、hooks、权限等普通设置继续加载。附加 Claude Code 参数放在 `--` 后面，例如 `./bin/router claude -config config.json -- --continue`。
+
+如果另传一个 `--settings` 文件或 JSON，启动器会保留其中其他字段及环境变量，再覆盖连接 Router 所需的字段；不会把上游密钥传入 Claude Code。原 provider 的 `apiKeyHelper`、API Key、OAuth token 与云 provider 开关仅在这次会话中停用。企业 managed settings 仍遵循 Claude Code 自身的更高优先级。
 
 统计页打开即用，无需本地网关凭证，也无需设置 `ROUTER_TOKEN`。启动器会自动给 Claude Code 填入固定的 `local-router` 占位值，满足客户端的认证参数要求；网关不校验这个值，不把它转发给供应商。上游仍使用 `high.api_key` 和 `low.api_key`。旧配置中的 `gateway_token` / `gateway_token_env` 会被忽略，可以删除。
 
@@ -67,6 +69,18 @@ CLAUDE_CODE_GATEWAY_HINT_HEADERS=1 claude
 ```
 
 `local-router` 只是固定占位值，不是密钥。推荐使用 `router claude`，它还会设置子代理模型、模型别名和上下文窗口，并清除子进程中冲突的 provider 环境变量。
+
+## 与 CC Switch 共存及连接验证
+
+CC Switch 切换供应商时可能把 `ANTHROPIC_BASE_URL`、认证和模型写入 `~/.claude/settings.json`。Claude Code 的配置文件 `env` 可以覆盖进程环境，因此仅设置启动环境不能保证请求进入 Router；退出 CC Switch 也不代表已保存配置消失。
+
+`router claude` 现在会通过会话级 `--settings` 覆盖普通设置中的连接字段。无需删除 CC Switch 配置，也不用切换配置目录或禁用所有插件。关闭 Router 后，直接运行 `claude` 仍使用原来的配置。
+
+启动后输入 `/status`：默认 `Anthropic base URL` 应显示 `http://127.0.0.1:8787`。发送一条测试问题并刷新统计页，应出现对应时间的请求。`http://localhost:8000` 属于上游反代地址；如果 `/status` 仍显示它且 Router 没有新增记录，当前请求仍未进入 Router。先确认使用的是新编译的 `router claude`；若企业 managed settings 强制指定了地址，需要按组织管理方式处理。
+
+本地验证使用 Claude Code 2.1.328、隔离配置和模拟上游：旧方式请求进入配置文件中的地址；新启动器请求进入 Router 账本并完成转发，全局与项目设置内容均未变化。该测试不调用真实模型，也不代表所有 CC Switch / Claude Code 版本都已验证。
+
+参考：[Claude Code 设置优先级](https://code.claude.com/docs/en/settings#settings-precedence)、[配置文件 env 与环境变量](https://code.claude.com/docs/en/llm-gateway-connect#set-in-a-settings-file)、[CC Switch 配置文件说明](https://github.com/farion1231/cc-switch/blob/main/docs/user-manual/en/5-faq/5.1-config-files.md)。
 
 ## 路由模式
 
