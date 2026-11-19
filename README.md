@@ -25,6 +25,8 @@ cp config.example.json config.json
 
 编辑两个 provider 的 `base_url`、`api_key`、`model`、`auth`、`context_tokens` 和 `prices`。密钥与接口地址一样直接写入本地 `config.json`，不需要设置环境变量。`base_url` 是 API 根地址，可以包含 `/anthropic` 或 `/v1`，不能包含 `/messages`。模型 ID 会显式改写，不依赖供应商对 Claude 模型别名的隐式映射。上下文长度使用实际模型和中转服务的限制；示例值只是占位配置。
 
+连接本机 HTTP 反代时，`base_url` 可以填写 `http://localhost:8000`、`http://127.0.0.1:8000` 或 `http://[::1]:8000`，端口按实际服务修改。非本机接口需使用 HTTPS。这里的 `base_url` 是上游反代地址，网关自己的 `listen` 仍使用 `127.0.0.1:8787` 等回环 IP。
+
 在示例文件中填好 `high.api_key` 和 `low.api_key` 后直接启动：
 
 ```sh

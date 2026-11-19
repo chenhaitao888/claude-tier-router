@@ -146,8 +146,10 @@ func (c Config) Validate() error {
 		if e != nil || u.Hostname() == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 			return fmt.Errorf("%s: invalid base_url", name)
 		}
-		if u.Scheme != "https" && !(u.Scheme == "http" && net.ParseIP(u.Hostname()).IsLoopback()) {
-			return fmt.Errorf("%s: use HTTPS or loopback HTTP", name)
+		// localhost is a hostname, so net.ParseIP alone does not recognize it.
+		local := strings.EqualFold(u.Hostname(), "localhost") || net.ParseIP(u.Hostname()).IsLoopback()
+		if u.Scheme != "https" && !(u.Scheme == "http" && local) {
+			return fmt.Errorf("%s: use HTTPS or local HTTP (localhost, 127.0.0.1 or ::1)", name)
 		}
 		if strings.HasSuffix(strings.TrimRight(u.Path, "/"), "/messages") {
 			return fmt.Errorf("%s: base_url must not include /messages", name)
