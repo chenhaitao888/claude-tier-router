@@ -13,6 +13,7 @@ import (
 
 type Record struct {
 	ID                   string                `json:"id"`
+	RunID                string                `json:"run_id,omitempty"`
 	ParentID             string                `json:"parent_id,omitempty"`
 	Kind                 string                `json:"kind"`
 	Session              string                `json:"session_id"`

@@ -113,7 +113,7 @@ func classifierInput(r Request, maxChars int) string {
 
 func (g *Gateway) classify(ctx context.Context, parent Record, r Request) (string, string, float64) {
 	start := time.Now()
-	rec := Record{ID: newID(), ParentID: parent.ID, Kind: "classifier", Session: parent.Session, Prompt: parent.Prompt, Agent: parent.Agent, Class: "router_classifier", Started: start, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, Actual: "low", Model: g.Config.Low.Model, Prices: g.Config.Low.Prices, CostStatus: "in_progress"}
+	rec := Record{ID: newID(), RunID: g.RunID, ParentID: parent.ID, Kind: "classifier", Session: parent.Session, Prompt: parent.Prompt, Agent: parent.Agent, Class: "router_classifier", Started: start, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, Actual: "low", Model: g.Config.Low.Model, Prices: g.Config.Low.Prices, CostStatus: "in_progress"}
 	rec.PricedAt = start
 	rec.ClassifierDiagnostic = &ClassifierDiagnostic{Status: "pending"}
 	diag := rec.ClassifierDiagnostic

@@ -15,15 +15,17 @@ import (
 )
 
 type Gateway struct {
-	Config Config
-	Store  *Store
-	Engine *Engine
-	Client *http.Client
-	Logger *log.Logger
+	Config    Config
+	RunID     string
+	StartedAt time.Time
+	Store     *Store
+	Engine    *Engine
+	Client    *http.Client
+	Logger    *log.Logger
 }
 
 func NewGateway(c Config, s *Store) *Gateway {
-	return &Gateway{Config: c, Store: s, Engine: NewEngine(), Logger: log.Default(),
+	return &Gateway{Config: c, RunID: newID(), StartedAt: time.Now().UTC(), Store: s, Engine: NewEngine(), Logger: log.Default(),
 		Client: &http.Client{Transport: &http.Transport{Proxy: http.ProxyFromEnvironment, DialContext: (&net.Dialer{Timeout: 15 * time.Second, KeepAlive: 30 * time.Second}).DialContext, TLSHandshakeTimeout: 10 * time.Second, ResponseHeaderTimeout: 60 * time.Second, IdleConnTimeout: 90 * time.Second, MaxIdleConns: 32, DisableCompression: true}, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func newID() string {
@@ -89,6 +91,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		jsonResponse(w, v)
+	case r.Method == "GET" && r.URL.Path == "/api/routing-health":
+		g.routingHealth(w, r)
 	case r.Method == "GET" && r.URL.Path == "/api/feedback":
 		v, err := g.Store.FeedbackViews()
 		if err != nil {
@@ -112,7 +116,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/info":
-		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "pages-v1"})
+		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v2", "run_id": g.RunID, "started_at": g.StartedAt})
 	default:
 		errorJSON(w, 404, "endpoint not found")
 	}
@@ -189,7 +193,7 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	if httpReq.Context().Err() != nil {
 		return
 	}
-	rec := Record{ID: id, Kind: "inference", Session: session, Prompt: prompt, Agent: agent, Class: class, Started: started, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, CostStatus: "in_progress"}
+	rec := Record{ID: id, RunID: g.RunID, Kind: "inference", Session: session, Prompt: prompt, Agent: agent, Class: class, Started: started, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, CostStatus: "in_progress"}
 	if err = g.Store.Save(rec); err != nil {
 		errorJSON(w, 503, "request ledger unavailable")
 		return

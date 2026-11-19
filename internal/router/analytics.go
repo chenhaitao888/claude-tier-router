@@ -99,12 +99,20 @@ type Summary struct {
 }
 
 type RoutingHealth struct {
+	InferenceRequests  int                              `json:"inference_requests"`
+	ClassifierRequests int                              `json:"classifier_requests"`
+	CacheExcluded      map[string]int                   `json:"cache_excluded"`
 	OutputLimited      int                              `json:"output_limited_requests"`
 	ClassifierOutcomes map[string]int                   `json:"classifier_outcomes"`
 	ClassifierSkipped  map[string]int                   `json:"classifier_skipped"`
 	SwitchBlocked      map[string]int                   `json:"switch_blocked"`
 	CachePredictions   map[string]*CachePredictionStats `json:"cache_predictions"`
 }
+
+func newRoutingHealth() RoutingHealth {
+	return RoutingHealth{ClassifierOutcomes: map[string]int{}, ClassifierSkipped: map[string]int{}, SwitchBlocked: map[string]int{}, CachePredictions: map[string]*CachePredictionStats{}, CacheExcluded: map[string]int{}}
+}
+
 type CachePredictionStats struct {
 	Requests            int            `json:"requests"`
 	Predicted           int64          `json:"predicted_read_tokens"`
@@ -118,6 +126,7 @@ type CachePredictionStats struct {
 
 func (h *RoutingHealth) add(r Record) {
 	if r.Kind == "classifier" {
+		h.ClassifierRequests++
 		status := "legacy_unclassified"
 		if r.ClassifierDiagnostic != nil {
 			status = r.ClassifierDiagnostic.Status
@@ -130,6 +139,10 @@ func (h *RoutingHealth) add(r Record) {
 		h.ClassifierOutcomes[status]++
 		return
 	}
+	if r.Kind != "inference" {
+		return
+	}
+	h.InferenceRequests++
 	if r.StopReason == "max_tokens" || r.StopReason == "model_context_window_exceeded" {
 		h.OutputLimited++
 	}
@@ -139,7 +152,22 @@ func (h *RoutingHealth) add(r Record) {
 	if reason := r.Decision.SwitchBlockedReason; reason != "" {
 		h.SwitchBlocked[reason]++
 	}
-	if !r.Complete || !r.Usage.HasAllTokens() || (r.Actual != "high" && r.Actual != "low") {
+	excluded := ""
+	switch {
+	case r.CostStatus == "in_progress":
+		excluded = "in_progress"
+	case r.Actual != "high" && r.Actual != "low":
+		excluded = "not_dispatched"
+	case !r.Complete:
+		excluded = "incomplete_response"
+	case !r.Usage.HasAllTokens():
+		excluded = "missing_usage"
+	}
+	if excluded != "" {
+		if h.CacheExcluded == nil {
+			h.CacheExcluded = map[string]int{}
+		}
+		h.CacheExcluded[excluded]++
 		return
 	}
 	version := r.Decision.CachePredictionVersion
@@ -199,7 +227,7 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 	out := Summary{
 		KnownCosts: map[string]float64{}, ClassifierCosts: map[string]float64{}, EstimatedCosts: map[string]float64{},
 		Scopes:        map[string]*UsageScope{"all": {}, "main": {}, "background": {}, "classifier": {}},
-		RoutingHealth: RoutingHealth{ClassifierOutcomes: map[string]int{}, ClassifierSkipped: map[string]int{}, SwitchBlocked: map[string]int{}, CachePredictions: map[string]*CachePredictionStats{}},
+		RoutingHealth: newRoutingHealth(),
 	}
 	rows, err := s.db.Query("SELECT payload FROM records")
 	if err != nil {
