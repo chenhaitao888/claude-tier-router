@@ -12,6 +12,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func writeFixture(t *testing.T, path, contents string, mode os.FileMode) {
@@ -81,6 +82,12 @@ func TestInstalledCommandPreservesWorkDirectoryAndDatabase(t *testing.T) {
 	}
 	config := `{"listen":"127.0.0.1:0","database":"data/router.db","mode":"auto","high":{"base_url":"http://127.0.0.1:9","model":"fixture-high","api_key":"fixture-high-secret","auth":"api_key","context_tokens":200000,"cache":{"kind":"none","ttl_seconds":300}},"low":{"base_url":"http://127.0.0.1:9","model":"fixture-low","api_key":"fixture-low-secret","auth":"api_key","context_tokens":200000,"cache":{"kind":"none","ttl_seconds":300}},"policy":{"version":"test","estimated_output_tokens":100},"classifier":{"timeout_ms":1000,"max_chars":1000}}`
 	writeFixture(t, filepath.Join(checkout, "config.json"), config, 0600)
+	t.Cleanup(func() {
+		cmd := exec.Command(binary, "stop", "-config", filepath.Join(checkout, "config.json"), "-force")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Errorf("stop fixture gateway: %v %s", err, out)
+		}
+	})
 	writeFixture(t, filepath.Join(work, "config.json"), "business configuration must not be loaded", 0600)
 	if err := os.MkdirAll(commands, 0700); err != nil {
 		t.Fatal(err)
@@ -175,9 +182,43 @@ func TestClaudeStubProcess(t *testing.T) {
 			t.Fatal("gateway is not healthy", resp.StatusCode)
 		}
 		cwd, _ := os.Getwd()
-		out, _ := json.Marshal(map[string]any{"cwd": cwd, "settings": path, "args": os.Args[i+2:]})
+		address := settings.Env["ANTHROPIC_BASE_URL"]
+		if session := os.Getenv("ROUTER_TEST_SESSION"); session != "" {
+			request, _ := http.NewRequest("POST", address+"/v1/messages", strings.NewReader(`{"model":"router-auto","max_tokens":100,"messages":[{"role":"user","content":"explain the fixture"}]}`))
+			request.Header.Set("x-claude-code-session-id", session)
+			request.Header.Set("x-claude-code-prompt-id", "same-prompt")
+			response, err := http.DefaultClient.Do(request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			response.Body.Close()
+			if response.StatusCode != 200 {
+				t.Fatal("fixture inference failed", response.StatusCode)
+			}
+		}
+		out, _ := json.Marshal(map[string]any{"cwd": cwd, "settings": path, "args": os.Args[i+2:], "address": address})
 		if err := os.WriteFile(capture, out, 0600); err != nil {
 			t.Fatal(err)
+		}
+		if wait := os.Getenv("ROUTER_TEST_WAIT_FILE"); wait != "" {
+			deadline := time.Now().Add(45 * time.Second)
+			for {
+				if _, err := os.Stat(wait); err == nil {
+					break
+				}
+				if time.Now().After(deadline) {
+					t.Fatal("fixture session timed out")
+				}
+				time.Sleep(25 * time.Millisecond)
+			}
+			response, err := http.Get(address + "/healthz")
+			if err != nil {
+				t.Fatal("gateway disappeared while another session exited", err)
+			}
+			response.Body.Close()
+			if response.StatusCode != 200 {
+				t.Fatal(response.StatusCode)
+			}
 		}
 		fmt.Println("stub Claude connected to router")
 		return

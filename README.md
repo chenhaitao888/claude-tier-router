@@ -42,7 +42,7 @@ router check
 router claude
 ```
 
-`check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，使用子进程环境及本次会话的 `--settings` 固定 Router 地址、模型别名和本地占位认证，不修改 Claude Code 的全局或项目设置文件。会话设置保存在权限为 0600 的临时文件中，子进程退出时清理。插件、hooks、权限等普通设置继续加载。附加 Claude Code 参数放在 `--` 后面，例如 `router claude -- --continue`。
+`check` 只验证配置结构，不发送模型请求。`claude` 自动启动或复用独立运行的本地共享网关，再启动当前目录的 Claude Code；使用子进程环境及本次会话的 `--settings` 固定 Router 地址、模型别名和本地占位认证，不修改 Claude Code 的全局或项目设置文件。会话设置保存在权限为 0600 的临时文件中，子进程退出时清理。插件、hooks、权限等普通设置继续加载。附加 Claude Code 参数放在 `--` 后面，例如 `router claude -- --continue`。
 
 省略 `-config` 时，优先读取 Router 可执行文件所属项目的 `config.json`，再查找可执行文件同目录、`~/.config/claude-tier-router/config.json`，最后兼容当前目录的 `config.json`；启动时会打印实际配置路径。通过安装链接启动也能找到原项目配置，数据库相对路径仍以配置文件目录为基准。需要使用其他配置时，继续使用 `router claude -config /path/to/config.json`。无需安装也可使用原来的 `./bin/router claude -config config.json`。
 
@@ -61,14 +61,26 @@ cd /path/to/your/work-project
 router claude
 ```
 
-打开 http://127.0.0.1:8787 查看统计。路由器跟随 Claude Code 退出；修改配置后重新启动。每台电脑使用独立的本地配置与数据库，仓库不携带密钥、历史提问或调用数据。
+打开 http://127.0.0.1:8787 查看统一统计。每个终端都可在不同业务目录运行 `router claude`，共享同一个网关，按各自会话 ID 隔离路由状态和问题统计。关闭任意 Claude 会话都会释放连接，网关继续运行；关闭第一个窗口也不会影响其他窗口。每台电脑使用独立的本地配置与数据库，仓库不携带密钥、历史提问或调用数据。
 
-更新代码时，在 Router 项目目录执行以下命令，重新启动 `router claude` 即可。安装链接依赖这个目录，请保留它；移动目录后重新处理旧链接并安装。
+更新代码时，在 Router 项目目录执行以下命令。后台网关没有活动会话时，下次 `router claude` 会自动加载变更后的配置或程序；仍有会话或请求在运行时，会提示先结束会话再重启，不会中途替换。安装链接依赖这个目录，请保留它；移动目录后重新处理旧链接并安装。
 
 ```sh
 git pull --ff-only
 ./install.sh
 ```
+
+共享服务管理命令：
+
+```sh
+router status
+router stop
+router restart
+```
+
+`status` 显示服务地址、PID、活动 Claude 会话数和在途请求数。`stop` / `restart` 默认拒绝打断活动会话或请求；确实要中断全部会话时可以显式加 `-force`。这些命令也支持 `-config`，不需要额外配置本地凭证。后台日志和运行状态位于数据库目录下的 `.router-*` 文件，权限为 0600；不会保存 API Key。
+
+第一次升级到共享版本时，请先退出旧版 Router 及其 Claude 会话，然后再运行新版 `router claude`。旧版进程没有共享协议，占用端口时会明确报错；其他程序占用端口也不会被当作 Router 复用。配置的端口为 0 时，并发启动仍通过运行状态文件共享同一个实际端口。
 
 也可独立启动代理：
 
@@ -76,7 +88,7 @@ git pull --ff-only
 router serve
 ```
 
-在另一个终端、业务项目目录运行：
+`router serve` 在前台运行，也能被相同配置的 `router claude` 复用；服务生命周期由这个前台终端控制，启动器不会自动替换它。也可在另一个终端、业务项目目录直接运行：
 
 ```sh
 ANTHROPIC_BASE_URL=http://127.0.0.1:8787 \

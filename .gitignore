@@ -9,3 +9,8 @@
 .DS_Store
 /.env.*
 /config.*.local.json
+
+.router-*.json
+.router-*.lock
+.router-*.log
+.router-runtime-*

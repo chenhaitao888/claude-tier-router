@@ -22,6 +22,7 @@ type Gateway struct {
 	Engine    *Engine
 	Client    *http.Client
 	Logger    *log.Logger
+	Runtime   http.Handler // optional lifecycle control; same local-origin checks apply
 }
 
 func NewGateway(c Config, s *Store) *Gateway {
@@ -58,6 +59,10 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	}
 	if !localRequest(r) {
 		errorJSON(w, 403, "local same-origin requests only")
+		return
+	}
+	if g.Runtime != nil && (r.URL.Path == "/api/runtime" || strings.HasPrefix(r.URL.Path, "/api/runtime/")) {
+		g.Runtime.ServeHTTP(w, r)
 		return
 	}
 	switch {
