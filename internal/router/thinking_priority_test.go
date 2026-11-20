@@ -32,7 +32,7 @@ func TestHighContentCapabilityWithProtectedHistory(t *testing.T) {
 					t.Fatal("classified content with only one capable model")
 				}
 				c.High.ContextTokens = 1
-				if d := Decide(c, r, b, tier, reason, confidence); d.Error != "selected_model_capability_or_context_limit" {
+				if d := Decide(c, r, b, tier, reason, confidence); d.Error != "output_budget_exceeds_context" {
 					t.Fatal("ignored high context limit", d)
 				}
 			}
@@ -68,7 +68,7 @@ func TestCapabilityLockConflictDoesNotDispatchLow(t *testing.T) {
 			t.Fatal(rows, err)
 		}
 		if serverState {
-			if rr.Code != 409 || calls.Load() != 0 || rows[0].Actual != "" || rows[0].Error != "selected_model_capability_or_context_limit" {
+			if rr.Code != 409 || calls.Load() != 0 || rows[0].Actual != "" || rows[0].Error != "selected_model_content_unsupported" {
 				t.Fatal("incompatible server history bypassed capability check", rr.Code, calls.Load(), rows[0])
 			}
 		} else if rr.Code != 200 || calls.Load() != 1 || rows[0].Actual != "high" || !rows[0].Complete || rows[0].Decision.ClassifierSkipReason != "rule_decided" {
@@ -116,7 +116,7 @@ func TestThinkingOverrideRetainsOtherLimits(t *testing.T) {
 		{name: "unknown server state fails", origin: "unknown", extra: `,{"type":"server_tool_use","id":"server-tool"}`, wantError: "unknown_history_origin"},
 		{name: "fixed low stays low", mode: "low", want: "low"},
 		{name: "fixed high stays high", mode: "high", want: "high"},
-		{name: "high context still bounded", smallContext: true, want: "high", wantError: "selected_model_capability_or_context_limit"},
+		{name: "high context still bounded", smallContext: true, want: "high", wantError: "output_budget_exceeds_context"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			c := testConfig()

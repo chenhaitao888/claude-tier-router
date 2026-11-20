@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-const RoutingVersion = "high-priority-thinking-v2"
+const RoutingVersion = "context-recovery-v1"
 
 type Decision struct {
 	RoutingVersion         string          `json:"routing_version,omitempty"`
@@ -39,6 +39,7 @@ type Decision struct {
 	ComparisonLow          *float64        `json:"comparison_low_cost"`
 	ExchangeRate           *ExchangeRate   `json:"exchange_rate_snapshot,omitempty"`
 	CachePredictionVersion string          `json:"cache_prediction_version,omitempty"`
+	ContextBudget          *ContextBudget  `json:"context_budget,omitempty"`
 	Error                  string          `json:"error,omitempty"`
 }
 type cacheEntry struct {
@@ -180,6 +181,7 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 	if output == 0 {
 		output = c.Policy.EstimatedOutputTokens
 	}
+	d.ContextBudget = &ContextBudget{EstimatedInput: r.Tokens, ReservedOutput: output, EstimatedTotal: r.Tokens + output, HighLimit: c.High.ContextTokens, LowLimit: c.Low.ContextTokens, EstimateMethod: "request_bytes_div_2_excluding_known_metadata"}
 	eligibleHigh := r.Tokens+output <= c.High.ContextTokens
 	eligibleLow := r.Tokens+output <= c.Low.ContextTokens && !r.ComplexContent
 	// High's compatibility with these features still needs a real-provider preflight.
@@ -238,8 +240,15 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 		// not grant support for images, documents or other high-only content.
 		eligibleLow = r.Tokens+output <= c.Low.ContextTokens && !r.ComplexContent
 	}
-	if (d.Selected == "high" && !eligibleHigh) || (d.Selected == "low" && !eligibleLow) {
-		d.Error = "selected_model_capability_or_context_limit"
+	if d.Error == "" && ((d.Selected == "high" && !eligibleHigh) || (d.Selected == "low" && !eligibleLow)) {
+		switch {
+		case output >= d.ContextBudget.limit(d.Selected):
+			d.Error = "output_budget_exceeds_context"
+		case r.Tokens+output > d.ContextBudget.limit(d.Selected):
+			d.Error = "selected_model_context_limit"
+		default:
+			d.Error = "selected_model_content_unsupported"
+		}
 	}
 	return d
 }

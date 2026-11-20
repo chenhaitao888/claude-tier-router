@@ -87,6 +87,14 @@ CLAUDE_CODE_GATEWAY_HINT_HEADERS=1 claude
 
 `local-router` 只是固定占位值，不是密钥。推荐使用 `router claude`，它还会设置子代理模型、模型别名和上下文窗口，并清除子进程中冲突的 provider 环境变量。
 
+## 上下文与自动压缩
+
+启动器将 `router-auto` 的上下文容量设为两档 `context_tokens` 的较小值（`CLAUDE_CODE_MAX_CONTEXT_TOKENS`），自动压缩窗口仍取其 75%（`CLAUDE_CODE_AUTO_COMPACT_WINDOW`）。两档均填 1,000,000 时对应 750,000 的窗口；这些是配置值，不能代替供应商实际容量验证。Claude Code 会按自身版本、模型容量和有效配置处理窗口值。启动器保留用户的自动压缩开关；在 `/config` 查看 Auto-compact，`DISABLE_AUTO_COMPACT` / `DISABLE_COMPACT` 等环境变量也可能关闭压缩。
+
+Router 本地估算超限现在返回 HTTP 400 / `invalid_request_error`，消息包含 `prompt is too long`，让 Claude Code 能识别并尝试自动压缩恢复；不再用通用 409 混淆上下文和内容能力错误。错误明确注明本地估算，并在请求详情的 `decision.context_budget` 中记录估算输入、输出预留、合计和两档配置上限。该预检查未派发模型，不产生该次上游费用；由客户端发起的后续压缩调用正常计费，Router 不自行重试。
+
+内容能力 / 历史兼容冲突仍返回 409，详情错误码为 `selected_model_content_unsupported`；输出预留本身达到配置窗口则返回 `output_budget_exceeds_context`，需调整输出预算或配置，不能靠压缩历史解决。原始上游错误继续原样转发。本地 Claude Code 2.1.329 的隔离模拟对照中，旧 409 格式未自动压缩，新 400 格式触发一次自动压缩并完成后续回答；测试不调用真实模型，真实接口与其他客户端版本仍需实际确认。
+
 ## 与 CC Switch 共存及连接验证
 
 CC Switch 切换供应商时可能把 `ANTHROPIC_BASE_URL`、认证和模型写入 `~/.claude/settings.json`。Claude Code 的配置文件 `env` 可以覆盖进程环境，因此仅设置启动环境不能保证请求进入 Router；退出 CC Switch 也不代表已保存配置消失。
@@ -139,7 +147,7 @@ DeepSeek 自动缓存通常没有单独的缓存写入加价，仍需按你实�
 - 提取最后一条有效用户任务，忽略 Claude Code 注入的 `<system-reminder>`，工具结果和纯提醒不会覆盖任务。规则长度上限按 Unicode 字符计算。上游请求内容保持原样。
 - 分类器输入独立保留任务，再填充有界近期上下文；接受单个 JSON 对象或单个 JSON 代码围栏，拒绝重复字段、缺失字段、非法枚举、越界置信度、矛盾决策和额外内容。输出截断也保守回退。详细原因、停止原因、输出长度会入账，正文不记录；不自动付费重试。DeepSeek Anthropic 接口仅支持 `output_config.effort`，所以没有依赖不受支持的强制 JSON schema 参数。
 - auto 命中本地复杂任务规则 `complexity_rule` 或内容能力规则 `content_requires_high_capability`（image / document / search_result）时，即使历史中有 Flash 的 thinking / redacted_thinking，也直接使用 high 并跳过付费分类器。对应越过限制理由为 `complexity_overrides_thinking` 或 `capability_overrides_thinking`。这项例外独立于 `allow_text_switch`，仍受高级模型上下文限制；工具失败信号、分类器建议或不确定回退本身不触发此例外。服务端工具等其他受保护状态继续限制切换；若来源 Flash 又不满足内容能力要求，则返回 409、不调用模型，不能通过历史兼容例外放行不支持的内容。
-- 切换仅替换请求的模型字段，完整保留 thinking 签名、工具调用和结果。**路由放行不代表上游兼容性已验证**；如果高档接口拒绝异源 thinking，原样返回并记录错误，不自动重试或退回 Flash。普通任务仍遵守历史锁；换一个 prompt_id 不能清除历史。`/api/info` 和新请求详情中的 `routing_version: "high-priority-thinking-v2"` 可用于确认已运行这版逻辑，既有 `policy.version` 配置不需要修改。
+- 切换仅替换请求的模型字段，完整保留 thinking 签名、工具调用和结果。**路由放行不代表上游兼容性已验证**；如果高档接口拒绝异源 thinking，原样返回并记录错误，不自动重试或退回 Flash。普通任务仍遵守历史锁；换一个 prompt_id 不能清除历史。`/api/info` 和新请求详情中的 `routing_version: "context-recovery-v1"` 可用于确认已运行这版逻辑，既有 `policy.version` 配置不需要修改。
 - 缓存前缀按 tools → system → message 内容块构建，支持消息增长、标记移动和未缓存尾部修改。显式缓存考虑断点及 20 块回看范围；自动缓存从完整响应的输入 usage 建立预测。各模型与分支隔离、TTL 过期失效，覆盖量由 usage 按前缀相对大小分摊，再保守打八折。未缓存尾部按普通输入费率估算。
 - “路由诊断”默认展示本次 Router 启动产生的请求，可切换到全部历史；顶部显示当前生效的模式、分类器与文本历史切换开关。分类器结果、跳过原因和切换限制按所选范围统计，缓存预测值、实际值、漏预测次数和平均绝对误差按预测版本分别汇总。未知价格仍不影响请求和 token 占比。
 

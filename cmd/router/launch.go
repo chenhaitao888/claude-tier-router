@@ -20,7 +20,8 @@ var conflictingEnv = map[string]string{
 func routingEnv(c router.Config, address string) map[string]string {
 	window := min(c.High.ContextTokens, c.Low.ContextTokens)
 	return map[string]string{
-		"ANTHROPIC_BASE_URL": address, "ANTHROPIC_AUTH_TOKEN": "local-router",
+		"CLAUDE_CODE_MAX_CONTEXT_TOKENS": strconv.Itoa(window),
+		"ANTHROPIC_BASE_URL":             address, "ANTHROPIC_AUTH_TOKEN": "local-router",
 		"ANTHROPIC_MODEL": "router-auto", "ANTHROPIC_DEFAULT_OPUS_MODEL": "router-auto", "ANTHROPIC_DEFAULT_SONNET_MODEL": "router-auto", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "router-auto",
 		"CLAUDE_CODE_SUBAGENT_MODEL": "router-auto", "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": strconv.Itoa(window * 3 / 4),
 	}

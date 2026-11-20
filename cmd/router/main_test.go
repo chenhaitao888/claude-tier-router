@@ -15,7 +15,7 @@ func TestLauncherOverridesOnlyChildEnvironment(t *testing.T) {
 		k, v, _ := strings.Cut(e, "=")
 		m[k] = v
 	}
-	if m["ANTHROPIC_API_KEY"] != "" || m["CLAUDE_CODE_USE_BEDROCK"] != "" || m["ANTHROPIC_AUTH_TOKEN"] != "local-router" || m["PATH"] != "/usr/bin" || m["ANTHROPIC_MODEL"] != "router-auto" || m["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] != "75000" {
+	if m["ANTHROPIC_API_KEY"] != "" || m["CLAUDE_CODE_USE_BEDROCK"] != "" || m["ANTHROPIC_AUTH_TOKEN"] != "local-router" || m["PATH"] != "/usr/bin" || m["ANTHROPIC_MODEL"] != "router-auto" || m["CLAUDE_CODE_AUTO_COMPACT_WINDOW"] != "75000" || m["CLAUDE_CODE_MAX_CONTEXT_TOKENS"] != "100000" {
 		t.Fatal(m)
 	}
 	if old[1] != "ANTHROPIC_API_KEY=old-secret" {

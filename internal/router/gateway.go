@@ -116,7 +116,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/info":
-		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "routing_version": RoutingVersion, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v4", "run_id": g.RunID, "started_at": g.StartedAt})
+		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "routing_version": RoutingVersion, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v5", "run_id": g.RunID, "started_at": g.StartedAt})
 	default:
 		errorJSON(w, 404, "endpoint not found")
 	}
@@ -230,10 +230,14 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		rec.Decision.Classifier = "low_model"
 	}
 	if rec.Decision.Error != "" {
-		rec.HTTPStatus = 409
+		status, kind, message := decisionAPIError(rec.Decision)
+		rec.HTTPStatus = status
 		rec.Error = rec.Decision.Error
 		rec.CostStatus = "not_dispatched"
-		errorJSON(w, 409, rec.Decision.Error)
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("X-Router-Request-Id", id)
+		w.WriteHeader(status)
+		json.NewEncoder(w).Encode(map[string]any{"type": "error", "error": map[string]string{"type": kind, "message": message}, "router_error": rec.Error, "context_budget": rec.Decision.ContextBudget})
 		return
 	}
 	rec.Actual = rec.Decision.Selected

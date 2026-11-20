@@ -112,3 +112,13 @@ Anthropic 兼容接口不等于计费语义完全相同。接入前必须核实�
 ## 请求归属与账单排查
 
 问题列表按完整 session_id + prompt_id 聚合；没有问题 ID 或只有后台调用的独立组不进入问题列表。请求明细独立展示 request_class 和问题归属，“未关联”不等于“后台”。核对同一时段的费用须查看全部请求；问题行的高级模型零调用不能代表该时段网关高级模型零调用。模型列明确标注推荐和实际执行，分类器只显示执行模型，避免把两档位误解为两次调用。
+
+## 上下文超限与客户端恢复
+
+客户端 `router-auto` 的上下文容量通过 `CLAUDE_CODE_MAX_CONTEXT_TOKENS` 与两档配置的较小值对齐，自动压缩窗口仍为其 75%。自动压缩的用户开关和禁用环境变量继续由 Claude Code 处理。
+
+路由预检查将内容能力冲突、输出预算配置错误、估算上下文超限分开。每个决策保存 `context_budget`：估算输入、预留输出、合计、两档配置容量和估算方法。容量均标注 configured，输入仍是排除已识别元数据后的保守字节估算，不能作为真实 token 计数。
+
+仅 `selected_model_context_limit` 返回 Anthropic 格式的 HTTP 400 / invalid_request_error，消息包含 prompt is too long，并明确标注 Router 本地估算。Claude Code 可识别这一错误并尝试压缩恢复。输出预算本身大于等于配置窗口时返回 output_budget_exceeds_context（400），不使用提示过长信号；内容能力冲突返回 selected_model_content_unsupported（409），也不触发不必要的压缩。历史来源错误仍使用原语义。错误响应带请求 ID，账本保存实际 HTTP 状态、诊断与未派发状态。
+
+此变化只改进本地预检查的错误表达，不伪造上游计数、不删除历史、不自动调用模型重试，也不改写供应商返回的错误。由 Claude Code 发起的压缩请求仍走正常代理和计费记录。
