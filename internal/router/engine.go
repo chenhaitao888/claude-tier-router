@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-const RoutingVersion = "context-recovery-v1"
+const RoutingVersion = "cooperation-v1"
 
 type Decision struct {
 	RoutingVersion         string          `json:"routing_version,omitempty"`
@@ -87,6 +87,9 @@ func (e *Engine) Acquire(key string) (*branch, func()) {
 	return b, func() { b.mu.Unlock(); e.mu.Lock(); b.refs--; b.Last = time.Now(); e.mu.Unlock() }
 }
 func Rule(r Request) (string, string, float64) {
+	if r.CooperationRole == "coordinator" && r.CooperationDelegated {
+		return "high", "cooperation_coordination", 1
+	}
 	if r.ComplexContent {
 		return "high", "content_requires_high_capability", 1
 	}
@@ -273,6 +276,8 @@ func thinkingOverrideReason(c Config, r Request) string {
 			return "complexity_overrides_thinking"
 		case "content_requires_high_capability":
 			return "capability_overrides_thinking"
+		case "cooperation_coordination":
+			return "cooperation_coordination_overrides_thinking"
 		}
 	}
 	return ""

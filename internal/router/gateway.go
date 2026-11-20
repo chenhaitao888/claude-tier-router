@@ -66,6 +66,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	switch {
+	case r.Method == "POST" && r.URL.Path == "/api/cooperation/events":
+		g.cooperationEvent(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/messages":
 		g.messages(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/messages/count_tokens":
@@ -121,7 +123,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/info":
-		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "routing_version": RoutingVersion, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v5", "run_id": g.RunID, "started_at": g.StartedAt})
+		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "routing_version": RoutingVersion, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "cooperation-v1", "run_id": g.RunID, "started_at": g.StartedAt, "cooperation_supported": true, "cooperation_default": g.Config.Cooperation.Enabled, "max_executor_requests": g.Config.Cooperation.ExecutorLimit()})
 	default:
 		errorJSON(w, 404, "endpoint not found")
 	}
@@ -185,9 +187,22 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		errorJSON(w, 400, "invalid attribution identifiers")
 		return
 	}
+	rec := Record{ID: id, RunID: g.RunID, Kind: "inference", Session: session, Prompt: prompt, Agent: agent, Class: class, Started: started, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, CostStatus: "in_progress"}
+	if err := g.identifyCooperation(&req, &rec); err != nil {
+		rec.Error, rec.HTTPStatus, rec.CostStatus = "cooperation_identity_invalid", 409, "not_dispatched"
+		if g.Store.Save(rec) != nil {
+			errorJSON(w, 503, "request ledger unavailable")
+			return
+		}
+		errorJSON(w, 409, err.Error())
+		return
+	}
 	routingClass := class
 	if routingClass == "compaction" {
 		routingClass = "main"
+		if rec.Cooperation != nil && rec.Cooperation.Role != "coordinator" {
+			routingClass = "subagent"
+		}
 	}
 	branchKey := session + "\x00" + agent + "\x00" + routingClass
 	if class == "auxiliary" {
@@ -198,7 +213,6 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	if httpReq.Context().Err() != nil {
 		return
 	}
-	rec := Record{ID: id, RunID: g.RunID, Kind: "inference", Session: session, Prompt: prompt, Agent: agent, Class: class, Started: started, Mode: g.Config.Mode, Policy: g.Config.Policy.Version, CostStatus: "in_progress"}
 	if err = g.Store.Save(rec); err != nil {
 		errorJSON(w, 503, "request ledger unavailable")
 		return
@@ -222,17 +236,24 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 			g.logError("failed to persist inference result")
 		}
 	}()
-	tier, reason, confidence := Rule(req)
-	classified := false
-	skip := classifierSkip(g.Config, req, b, tier)
-	if skip == "" {
-		tier, reason, confidence = g.classify(httpReq.Context(), rec, req)
-		classified = true
-	}
-	rec.Decision = Decide(g.Config, req, b, tier, reason, confidence)
-	rec.Decision.ClassifierSkipReason = skip
-	if classified {
-		rec.Decision.Classifier = "low_model"
+	if rec.Cooperation != nil && rec.Cooperation.Role != "coordinator" {
+		rec.Decision = g.cooperationDecision(req, rec, b)
+	} else {
+		tier, reason, confidence := Rule(req)
+		classified := false
+		skip := classifierSkip(g.Config, req, b, tier)
+		if skip == "" {
+			tier, reason, confidence = g.classify(httpReq.Context(), rec, req)
+			classified = true
+		}
+		rec.Decision = Decide(g.Config, req, b, tier, reason, confidence)
+		rec.Decision.ClassifierSkipReason = skip
+		if classified {
+			rec.Decision.Classifier = "low_model"
+		}
+		if rec.Cooperation != nil && rec.Decision.Selected == "low" && !req.CooperationDelegated {
+			rec.Cooperation.Stage = "direct"
+		}
 	}
 	if rec.Decision.Error != "" {
 		status, kind, message := decisionAPIError(rec.Decision)

@@ -27,6 +27,7 @@ func run(args []string) error {
 	path := fs.String("config", "", "configuration path (default: router checkout or user configuration)")
 	listen := fs.String("listen", "127.0.0.1:8787", "demo listen address")
 	force := fs.Bool("force", false, "stop/restart even if Claude sessions are active")
+	cooperate := fs.Bool("cooperate", false, "Claude: let Opus plan/review and Flash execute bounded subtasks")
 	sharedChild := fs.Bool("shared-child", false, "internal shared gateway startup")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -47,6 +48,15 @@ func run(args []string) error {
 	c, err := router.LoadConfig(configPath)
 	if err != nil {
 		return err
+	}
+	launchConfig := c
+	fs.Visit(func(f *flag.Flag) {
+		if f.Name == "cooperate" {
+			launchConfig.Cooperation.Enabled = *cooperate
+		}
+	})
+	if command == "claude" && launchConfig.Cooperation.Enabled && c.Mode != "auto" {
+		return errors.New("cooperative Claude sessions require mode auto in Router config")
 	}
 	fmt.Println("Configuration:", configPath)
 	if command == "check" {
@@ -104,15 +114,18 @@ func run(args []string) error {
 		fmt.Println("Shared Router ready.")
 		return nil
 	}
-	args, cleanup, err := launchArgs(fs.Args(), c, lease.Address)
+	args, cleanup, err := launchArgs(fs.Args(), launchConfig, lease.Address)
 	if err != nil {
 		return err
 	}
 	defer cleanup()
 	fmt.Println("Claude Code gateway:", lease.Address, "| shared service; session settings applied")
+	if launchConfig.Cooperation.Enabled {
+		fmt.Println("Cooperation: auto/simple direct; Opus coordination/review; Flash execution. Worker outcomes are model reports, not manual acceptance.")
+	}
 	child := exec.Command("claude", args...)
 	child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stderr
-	child.Env = launchEnv(os.Environ(), c, lease.Address)
+	child.Env = launchEnv(os.Environ(), launchConfig, lease.Address)
 	signals := make(chan os.Signal, 1)
 	signal.Notify(signals, launcherSignals()...)
 	defer signal.Stop(signals)

@@ -2,6 +2,10 @@
   "listen": "127.0.0.1:8787",
   "database": "data/router.db",
   "mode": "shadow",
+  "cooperation": {
+    "enabled": false,
+    "max_executor_requests": 12
+  },
   "high": {
     "base_url": "https://your-opus-provider.example",
     "model": "YOUR_OPUS_MODEL_ID",

@@ -79,25 +79,27 @@ func (s *Store) SaveTaskLabel(label TaskLabel, replace bool) error {
 
 type taskKey struct{ Session, Prompt string }
 type TaskSummary struct {
-	Session            string             `json:"session_id"`
-	Prompt             string             `json:"prompt_id"`
-	Label              *TaskLabel         `json:"label,omitempty"`
-	Started            time.Time          `json:"started_at"`
-	Updated            time.Time          `json:"updated_at"`
-	ElapsedMS          int64              `json:"elapsed_ms"`
-	Requests           int                `json:"requests"`
-	MainRequests       int                `json:"main_requests"`
-	BackgroundRequests int                `json:"background_requests"`
-	ClassifierRequests int                `json:"classifier_requests"`
-	High               int                `json:"high_requests"`
-	Low                int                `json:"low_requests"`
-	Tokens             int64              `json:"total_tokens"`
-	MissingUsage       int                `json:"missing_usage_requests"`
-	Costs              map[string]float64 `json:"costs"`
-	EstimatedCosts     map[string]float64 `json:"retrospective_estimated_costs"`
-	UnknownCosts       int                `json:"unknown_cost_requests"`
-	State              string             `json:"state"`
-	Feedback           *Feedback          `json:"feedback,omitempty"`
+	CooperationStages  map[string]*CooperationStage `json:"cooperation_stages,omitempty"`
+	CooperationRuns    []CooperationRun             `json:"cooperation_runs,omitempty"`
+	Session            string                       `json:"session_id"`
+	Prompt             string                       `json:"prompt_id"`
+	Label              *TaskLabel                   `json:"label,omitempty"`
+	Started            time.Time                    `json:"started_at"`
+	Updated            time.Time                    `json:"updated_at"`
+	ElapsedMS          int64                        `json:"elapsed_ms"`
+	Requests           int                          `json:"requests"`
+	MainRequests       int                          `json:"main_requests"`
+	BackgroundRequests int                          `json:"background_requests"`
+	ClassifierRequests int                          `json:"classifier_requests"`
+	High               int                          `json:"high_requests"`
+	Low                int                          `json:"low_requests"`
+	Tokens             int64                        `json:"total_tokens"`
+	MissingUsage       int                          `json:"missing_usage_requests"`
+	Costs              map[string]float64           `json:"costs"`
+	EstimatedCosts     map[string]float64           `json:"retrospective_estimated_costs"`
+	UnknownCosts       int                          `json:"unknown_cost_requests"`
+	State              string                       `json:"state"`
+	Feedback           *Feedback                    `json:"feedback,omitempty"`
 	latest             Record
 	latestPriority     int
 }
@@ -169,8 +171,10 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 		g := groups[key]
 		if g == nil {
 			g = &TaskSummary{Session: r.Session, Prompt: r.Prompt, Started: r.Started, Costs: map[string]float64{}, EstimatedCosts: map[string]float64{}, latestPriority: -1}
+			g.CooperationStages = map[string]*CooperationStage{}
 			groups[key] = g
 		}
+		addCooperationStage(g.CooperationStages, r)
 		if r.Started.Before(g.Started) {
 			g.Started = r.Started
 		}
@@ -228,6 +232,15 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 	if err != nil {
 		return result, err
 	}
+	runs, err := s.cooperationRuns()
+	if err != nil {
+		return result, err
+	}
+	for _, run := range runs {
+		if g := groups[taskKey{run.Session, run.Prompt}]; g != nil {
+			g.CooperationRuns = append(g.CooperationRuns, run)
+		}
+	}
 	labels, err := s.db.Query("SELECT payload FROM task_labels")
 	if err != nil {
 		return result, err
@@ -271,6 +284,7 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 			continue
 		}
 		g.ElapsedMS = max(0, g.Updated.Sub(g.Started).Milliseconds())
+		finishCooperationStages(g.CooperationStages)
 		g.State = taskState(g.latest)
 		result.Tasks = append(result.Tasks, *g)
 	}

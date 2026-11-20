@@ -23,6 +23,9 @@ func (b ContextBudget) limit(tier string) int {
 // as a context failure. A generic 409 api_error bypasses that recovery path.
 // Do not advertise content/history incompatibility as a context failure.
 func decisionAPIError(d Decision) (status int, kind, message string) {
+	if d.Error == "cooperation_executor_budget" {
+		return 400, "invalid_request_error", "Router executor request budget reached. Stop this worker and return the blocker to the coordinator; review the plan before starting another bounded task."
+	}
 	if d.ContextBudget != nil {
 		b := d.ContextBudget
 		switch d.Error {

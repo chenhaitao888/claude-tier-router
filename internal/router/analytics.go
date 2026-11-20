@@ -68,8 +68,9 @@ func (s *UsageScope) finish() {
 }
 
 type Summary struct {
-	Requests           int `json:"inference_requests"`
-	ClassifierRequests int `json:"classifier_requests"`
+	Cooperation        CooperationSummary `json:"cooperation"`
+	Requests           int                `json:"inference_requests"`
+	ClassifierRequests int                `json:"classifier_requests"`
 	// Compatibility fields contain USD only. Native currencies are never added.
 	KnownCostUSD      float64                `json:"known_cost_usd"`
 	ClassifierCostUSD float64                `json:"classifier_cost_usd"`
@@ -225,7 +226,8 @@ func (r Record) recordedCost() *Money {
 
 func (s *Store) Summary(configs ...Config) (Summary, error) {
 	out := Summary{
-		KnownCosts: map[string]float64{}, ClassifierCosts: map[string]float64{}, EstimatedCosts: map[string]float64{},
+		Cooperation: CooperationSummary{Stages: map[string]*CooperationStage{}, Outcomes: map[string]int{}},
+		KnownCosts:  map[string]float64{}, ClassifierCosts: map[string]float64{}, EstimatedCosts: map[string]float64{},
 		Scopes:        map[string]*UsageScope{"all": {}, "main": {}, "background": {}, "classifier": {}},
 		RoutingHealth: newRoutingHealth(),
 	}
@@ -249,6 +251,7 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 			r.EstimateUnpriced(configs[0])
 		}
 		out.RoutingHealth.add(r)
+		addCooperationStage(out.Cooperation.Stages, r)
 		if money := r.recordedCost(); money != nil {
 			out.KnownCosts[money.Currency] += money.Amount
 			if r.Kind == "classifier" {
@@ -300,6 +303,14 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 	}
 	for _, scope := range out.Scopes {
 		scope.finish()
+	}
+	finishCooperationStages(out.Cooperation.Stages)
+	runs, err := s.cooperationRuns()
+	if err != nil {
+		return out, err
+	}
+	for _, run := range runs {
+		out.Cooperation.addRun(run)
 	}
 	out.KnownCostUSD = out.KnownCosts["USD"]
 	out.ClassifierCostUSD = out.ClassifierCosts["USD"]

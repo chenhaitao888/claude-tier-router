@@ -12,6 +12,7 @@ import (
 )
 
 type Record struct {
+	Cooperation          *CooperationTrace     `json:"cooperation,omitempty"`
 	ID                   string                `json:"id"`
 	RunID                string                `json:"run_id,omitempty"`
 	ParentID             string                `json:"parent_id,omitempty"`
@@ -71,8 +72,9 @@ func OpenStore(path string) (*Store, error) {
  CREATE INDEX IF NOT EXISTS records_started ON records(started);
  CREATE TABLE IF NOT EXISTS feedback(session TEXT NOT NULL, prompt TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt));
  CREATE TABLE IF NOT EXISTS task_labels(session TEXT NOT NULL, prompt TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt));
+ CREATE TABLE IF NOT EXISTS cooperation_runs(session TEXT NOT NULL, prompt TEXT NOT NULL, agent TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt,agent));
  CREATE INDEX IF NOT EXISTS records_task ON records(session,prompt);
- PRAGMA user_version=2;`)
+ PRAGMA user_version=3;`)
 	if err != nil {
 		db.Close()
 		return nil, err

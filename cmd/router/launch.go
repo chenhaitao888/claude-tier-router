@@ -19,12 +19,17 @@ var conflictingEnv = map[string]string{
 
 func routingEnv(c router.Config, address string) map[string]string {
 	window := min(c.High.ContextTokens, c.Low.ContextTokens)
-	return map[string]string{
+	env := map[string]string{
 		"CLAUDE_CODE_MAX_CONTEXT_TOKENS": strconv.Itoa(window),
 		"ANTHROPIC_BASE_URL":             address, "ANTHROPIC_AUTH_TOKEN": "local-router",
 		"ANTHROPIC_MODEL": "router-auto", "ANTHROPIC_DEFAULT_OPUS_MODEL": "router-auto", "ANTHROPIC_DEFAULT_SONNET_MODEL": "router-auto", "ANTHROPIC_DEFAULT_HAIKU_MODEL": "router-auto",
 		"CLAUDE_CODE_SUBAGENT_MODEL": "router-auto", "CLAUDE_CODE_GATEWAY_HINT_HEADERS": "1", "CLAUDE_CODE_AUTO_COMPACT_WINDOW": strconv.Itoa(window * 3 / 4),
 	}
+	if c.Cooperation.Enabled {
+		env["ANTHROPIC_MODEL"] = router.CoordinatorModel
+		env["CLAUDE_CODE_SUBAGENT_MODEL_FORCE"] = "0"
+	}
+	return env
 }
 
 func launchEnv(existing []string, c router.Config, address string) []string {
@@ -114,17 +119,28 @@ func launchArgs(existing []string, c router.Config, address string) ([]string, f
 	}
 	settings["env"], _ = json.Marshal(env)
 	settings["model"] = json.RawMessage(`"router-auto"`)
-	settings["apiKeyHelper"] = json.RawMessage(`""`)
-	raw, err := json.Marshal(settings)
-	if err != nil {
-		return nil, nil, err
+	if c.Cooperation.Enabled {
+		settings["model"], _ = json.Marshal(router.CoordinatorModel)
 	}
+	settings["apiKeyHelper"] = json.RawMessage(`""`)
 	// A private file avoids exposing any user-supplied --settings secrets in argv.
 	dir, err := os.MkdirTemp("", "claude-tier-router-session-")
 	if err != nil {
 		return nil, nil, errors.New("could not create Claude session settings directory")
 	}
 	cleanup := func() { os.RemoveAll(dir) }
+	if c.Cooperation.Enabled {
+		args, err = cooperativeLaunch(args, settings, address, dir, c.Cooperation.ExecutorLimit())
+		if err != nil {
+			cleanup()
+			return nil, nil, err
+		}
+	}
+	raw, err := json.Marshal(settings)
+	if err != nil {
+		cleanup()
+		return nil, nil, err
+	}
 	path := filepath.Join(dir, "settings.json")
 	if err := os.WriteFile(path, raw, 0600); err != nil {
 		cleanup()

@@ -73,15 +73,28 @@ type ClassifierConfig struct {
 	TimeoutMS int  `json:"timeout_ms"`
 	MaxChars  int  `json:"max_chars"`
 }
+type CooperationConfig struct {
+	Enabled             bool `json:"enabled"`
+	MaxExecutorRequests int  `json:"max_executor_requests,omitempty"`
+}
+
+func (c CooperationConfig) ExecutorLimit() int {
+	if c.MaxExecutorRequests == 0 {
+		return 12
+	}
+	return c.MaxExecutorRequests
+}
+
 type Config struct {
-	Listen             string           `json:"listen"`
-	Database           string           `json:"database"`
-	Mode               string           `json:"mode"`
-	High               Provider         `json:"high"`
-	Low                Provider         `json:"low"`
-	Policy             Policy           `json:"policy"`
-	Classifier         ClassifierConfig `json:"classifier"`
-	StoreTaskSummaries bool             `json:"store_task_summaries,omitempty"`
+	Listen             string            `json:"listen"`
+	Database           string            `json:"database"`
+	Mode               string            `json:"mode"`
+	High               Provider          `json:"high"`
+	Low                Provider          `json:"low"`
+	Policy             Policy            `json:"policy"`
+	Classifier         ClassifierConfig  `json:"classifier"`
+	Cooperation        CooperationConfig `json:"cooperation,omitempty"`
+	StoreTaskSummaries bool              `json:"store_task_summaries,omitempty"`
 }
 
 func LoadConfig(path string) (Config, error) {
@@ -114,6 +127,12 @@ func LoadConfig(path string) (Config, error) {
 	return c, c.Validate()
 }
 func (c Config) Validate() error {
+	if c.Cooperation.MaxExecutorRequests < 0 || c.Cooperation.MaxExecutorRequests > 100 {
+		return errors.New("cooperation.max_executor_requests must be between 1 and 100 (or 0 for default 12)")
+	}
+	if c.Cooperation.Enabled && c.Mode != "auto" {
+		return errors.New("cooperation requires mode auto")
+	}
 	host, _, err := net.SplitHostPort(c.Listen)
 	if err != nil {
 		return fmt.Errorf("listen: %w", err)

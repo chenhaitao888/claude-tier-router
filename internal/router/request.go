@@ -12,9 +12,12 @@ import (
 )
 
 type Request struct {
-	Raw      []byte
-	Fields   map[string]json.RawMessage
-	Messages []struct {
+	Model                string
+	CooperationRole      string
+	CooperationDelegated bool
+	Raw                  []byte
+	Fields               map[string]json.RawMessage
+	Messages             []struct {
 		Role    string          `json:"role"`
 		Content json.RawMessage `json:"content"`
 	}
@@ -48,6 +51,7 @@ func ParseRequest(raw []byte) (Request, error) {
 	if err := json.Unmarshal(raw, &r.Fields); err != nil {
 		return r, err
 	}
+	json.Unmarshal(r.Fields["model"], &r.Model)
 	if err := json.Unmarshal(r.Fields["messages"], &r.Messages); err != nil || len(r.Messages) == 0 {
 		return r, errors.New("messages must be a nonempty array")
 	}
