@@ -110,7 +110,7 @@ CC Switch 切换供应商时可能把 `ANTHROPIC_BASE_URL`、认证和模型写�
 
 `classifier.enabled` 默认 false。打开后，仅当规则不确定且两个模型仍可选择时，才额外调用 Flash 分类，输入有长度上限和超时，调用独立记账，不递归经过网关。分类器调用会产生真实费用；超时后不能假定供应商未收费。规则和置信度是初始启发式，不是训练或校准后的复杂度模型。
 
-`policy.allow_text_switch` 默认 false。在真实上游双向接续验证通过后，可设置 true，放行普通文本和客户端工具历史切换。thinking 历史通常保留来源模型；auto 命中本地复杂任务规则 `complexity_rule` 时优先使用 high，可越过仅由 thinking / redacted_thinking 引起的历史锁（包括来源未知的恢复会话）。服务端工具等其他受保护状态仍保留来源；这些状态来源未知时返回 409。固定模式仍按指定模型执行。
+`policy.allow_text_switch` 默认 false。在真实上游双向接续验证通过后，可设置 true，放行普通文本和客户端工具历史切换。thinking 历史通常保留来源模型；auto 命中本地复杂任务规则 `complexity_rule` 或内容能力规则 `content_requires_high_capability` 时优先使用 high，可越过仅由 thinking / redacted_thinking 引起的历史锁（包括来源未知的恢复会话）。服务端工具等其他受保护状态仍保留来源；这些状态来源未知时返回 409。固定模式仍按指定模型执行。
 
 ## 价格与缓存
 
@@ -138,12 +138,14 @@ DeepSeek 自动缓存通常没有单独的缓存写入加价，仍需按你实�
 
 - 提取最后一条有效用户任务，忽略 Claude Code 注入的 `<system-reminder>`，工具结果和纯提醒不会覆盖任务。规则长度上限按 Unicode 字符计算。上游请求内容保持原样。
 - 分类器输入独立保留任务，再填充有界近期上下文；接受单个 JSON 对象或单个 JSON 代码围栏，拒绝重复字段、缺失字段、非法枚举、越界置信度、矛盾决策和额外内容。输出截断也保守回退。详细原因、停止原因、输出长度会入账，正文不记录；不自动付费重试。DeepSeek Anthropic 接口仅支持 `output_config.effort`，所以没有依赖不受支持的强制 JSON schema 参数。
-- auto 命中本地复杂任务规则 `complexity_rule` 时，即使历史中有 Flash 的 thinking / redacted_thinking，也直接使用 high 并跳过付费分类器。后台显示“复杂任务优先使用高级模型（越过 thinking 限制）”，详情理由为 `complexity_overrides_thinking`。这项例外独立于 `allow_text_switch`，仍受高级模型上下文限制；工具失败信号、分类器建议或不确定回退本身不触发此例外。服务端工具等其他受保护状态继续保留来源模型。
-- 切换仅替换请求的模型字段，完整保留 thinking 签名、工具调用和结果。**路由放行不代表上游兼容性已验证**；如果高档接口拒绝异源 thinking，原样返回并记录错误，不自动重试或退回 Flash。普通任务仍遵守历史锁；换一个 prompt_id 不能清除历史。`/api/info` 和新请求详情中的 `routing_version: "complex-thinking-v1"` 可用于确认已运行这版逻辑，既有 `policy.version` 配置不需要修改。
+- auto 命中本地复杂任务规则 `complexity_rule` 或内容能力规则 `content_requires_high_capability`（image / document / search_result）时，即使历史中有 Flash 的 thinking / redacted_thinking，也直接使用 high 并跳过付费分类器。对应越过限制理由为 `complexity_overrides_thinking` 或 `capability_overrides_thinking`。这项例外独立于 `allow_text_switch`，仍受高级模型上下文限制；工具失败信号、分类器建议或不确定回退本身不触发此例外。服务端工具等其他受保护状态继续限制切换；若来源 Flash 又不满足内容能力要求，则返回 409、不调用模型，不能通过历史兼容例外放行不支持的内容。
+- 切换仅替换请求的模型字段，完整保留 thinking 签名、工具调用和结果。**路由放行不代表上游兼容性已验证**；如果高档接口拒绝异源 thinking，原样返回并记录错误，不自动重试或退回 Flash。普通任务仍遵守历史锁；换一个 prompt_id 不能清除历史。`/api/info` 和新请求详情中的 `routing_version: "high-priority-thinking-v2"` 可用于确认已运行这版逻辑，既有 `policy.version` 配置不需要修改。
 - 缓存前缀按 tools → system → message 内容块构建，支持消息增长、标记移动和未缓存尾部修改。显式缓存考虑断点及 20 块回看范围；自动缓存从完整响应的输入 usage 建立预测。各模型与分支隔离、TTL 过期失效，覆盖量由 usage 按前缀相对大小分摊，再保守打八折。未缓存尾部按普通输入费率估算。
 - “路由诊断”默认展示本次 Router 启动产生的请求，可切换到全部历史；顶部显示当前生效的模式、分类器与文本历史切换开关。分类器结果、跳过原因和切换限制按所选范围统计，缓存预测值、实际值、漏预测次数和平均绝对误差按预测版本分别汇总。未知价格仍不影响请求和 token 占比。
 
 v4 针对 Claude Code 交互模式补充了缓存元数据适配：已识别的 `safeguards[].type=dangerous_tool_use` / `classifier_context.v=1` 不参与生成提示的缓存指纹和输入长度估算。工具执行后追加的 `prior_turn_context` 因而不会把整个前缀判为变化。该字段仍逐字转发给上游；其他 safeguards 字段、未知类型和未来版本仍保守参与指纹。
+
+逐请求明细分别显示请求类别（主请求、子代理、后台辅助、上下文压缩、分类器）和问题归属。缺少问题 ID 只表示“未关联问题”，不能据此推断请求类别。问题行 Opus 0 次不包含未关联或使用独立问题 ID 的其他请求；核对扣费要看同一时段的全部请求。“推荐 Opus；实际 Flash”表示一次请求的推荐和实际执行档位，不表示先后调用两个模型。分类器行单独显示其执行模型。
 
 “全部历史”中的“分类器未启用”“文本历史切换已关闭”可能来自旧配置，不能据此判断当前开关；修改配置并重启不会清空账本。模型分类的“不确定或置信不足”会明确标记保守回退，不再显示成“规则无法确定”。格式无效的分类结果也保守回退，不会自动付费重试。
 

@@ -17,7 +17,8 @@
 | --- | --- |
 | 两个方向的普通文本接续 | 无结构错误，前文约束和事实保留 |
 | 客户端工具调用接续 | tool_use_id 与 tool_result 对应，执行结果一致 |
-| 复杂任务的 thinking 历史 | auto 命中 complexity_rule 时选 high，原始内容保留，上游兼容性另验 |
+| 复杂任务 / 高级内容的 thinking 历史 | auto 命中 complexity_rule / content_requires_high_capability 时选 high，原始内容保留，上游兼容性另验 |
+| 服务端状态与内容能力冲突 | auto 来源 Flash 被服务端状态锁定且内容需要 high 时返回 409，禁止派发到能力不符的 Flash |
 | 普通任务的 thinking / 服务端状态历史 | 保留来源；未知来源明确报错，未静默剥离 |
 | 上下文压缩 | 使用所属主代理的来源状态，压缩后重新评估 |
 | 中断及重试 | 中断费用标未知，客户端重试单独记账，无拼接输出 |

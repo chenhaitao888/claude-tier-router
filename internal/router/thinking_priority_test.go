@@ -14,6 +14,77 @@ import (
 
 const complexThinkingRequest = `{"model":"router-auto","stream":true,"max_tokens":100,"thinking":{"type":"adaptive"},"messages":[{"role":"user","content":"explain this function"},{"role":"assistant","content":[{"type":"thinking","thinking":"opaque","signature":"original-signature"},{"type":"redacted_thinking","data":"original-data"},{"type":"text","text":"answer"}]},{"role":"user","content":"分析并发架构和死锁路径"}],"future_field":{"ordered":[3,1,2]}}`
 
+func TestHighContentCapabilityWithProtectedHistory(t *testing.T) {
+	for _, contentType := range []string{"image", "document", "search_result"} {
+		for _, origin := range []string{"low", "high", ""} {
+			for _, allowText := range []bool{false, true} {
+				c := testConfig()
+				c.Policy.AllowTextSwitch = allowText
+				body := strings.Replace(complexThinkingRequest, `"分析并发架构和死锁路径"`, `[{"type":"text","text":"解释这份内容"},{"type":"`+contentType+`"}]`, 1)
+				r := parseTestRequest(t, body)
+				b := &branch{Current: origin, Cache: map[string][]cacheEntry{}}
+				tier, reason, confidence := Rule(r)
+				d := Decide(c, r, b, tier, reason, confidence)
+				if reason != "content_requires_high_capability" || d.Selected != "high" || d.Error != "" || !d.SwitchAllowed || !slices.Contains(d.Reasons, "capability_overrides_thinking") {
+					t.Fatalf("type=%s origin=%q: %+v", contentType, origin, d)
+				}
+				if classifierSkip(c, r, b, tier) != "rule_decided" {
+					t.Fatal("classified content with only one capable model")
+				}
+				c.High.ContextTokens = 1
+				if d := Decide(c, r, b, tier, reason, confidence); d.Error != "selected_model_capability_or_context_limit" {
+					t.Fatal("ignored high context limit", d)
+				}
+			}
+		}
+	}
+}
+
+func TestCapabilityLockConflictDoesNotDispatchLow(t *testing.T) {
+	for _, serverState := range []bool{false, true} {
+		var calls atomic.Int64
+		body := strings.Replace(complexThinkingRequest, `"分析并发架构和死锁路径"`, `[{"type":"text","text":"解释这份内容"},{"type":"image"}]`, 1)
+		if serverState {
+			body = strings.Replace(body, `{"type":"text","text":"answer"}`, `{"type":"server_tool_use","id":"server1"}`, 1)
+		}
+		g, s := fixture(t, func(w http.ResponseWriter, r *http.Request) {
+			calls.Add(1)
+			got, _ := io.ReadAll(r.Body)
+			want, _ := ReplaceModel([]byte(body), "test-opus")
+			if string(got) != string(want) {
+				t.Error("sent high-only content to low or altered history")
+			}
+			w.Header().Set("Content-Type", "text/event-stream")
+			io.WriteString(w, goodStream)
+		})
+		g.Config.Mode, g.Config.Classifier.Enabled = "auto", true
+		b, release := g.Engine.Acquire("session\x00\x00main")
+		b.Current = "low"
+		release()
+		rr := httptest.NewRecorder()
+		g.ServeHTTP(rr, request(body))
+		rows, err := s.Records(10)
+		if err != nil || len(rows) != 1 {
+			t.Fatal(rows, err)
+		}
+		if serverState {
+			if rr.Code != 409 || calls.Load() != 0 || rows[0].Actual != "" || rows[0].Error != "selected_model_capability_or_context_limit" {
+				t.Fatal("incompatible server history bypassed capability check", rr.Code, calls.Load(), rows[0])
+			}
+		} else if rr.Code != 200 || calls.Load() != 1 || rows[0].Actual != "high" || !rows[0].Complete || rows[0].Decision.ClassifierSkipReason != "rule_decided" {
+			t.Fatal("thinking blocked capable model", rr.Code, calls.Load(), rows[0])
+		}
+	}
+	// Fixed low remains the user's explicit choice of provider capabilities.
+	c := testConfig()
+	c.Mode = "low"
+	r := Request{Tokens: 10, MaxTokens: 10, HasHistory: true, Protected: true, ComplexContent: true, ProtectionReasons: []string{"thinking"}}
+	d := Decide(c, r, &branch{Current: "low"}, "high", "content_requires_high_capability", 1)
+	if d.Selected != "low" || d.Error != "" {
+		t.Fatal("fixed provider choice changed", d)
+	}
+}
+
 func TestComplexTaskOverridesThinkingHistory(t *testing.T) {
 	for _, origin := range []string{"low", "high", ""} {
 		for _, allowText := range []bool{false, true} {
