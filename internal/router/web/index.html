@@ -37,7 +37,7 @@
 <div class="usage-note" id="health-config"></div><div class="usage-note" id="health-scope-note"></div><div class="usage-note" id="exchange-rate">汇率未配置</div>
 <div class="usage-note" id="routing-health">连接后显示分类结果与切换限制。</div>
 <div class="scroll"><table><thead><tr><th>缓存预测版本</th><th>有效请求</th><th>预测 / 实际读取 token</th><th>预测为零但命中</th><th>预测命中但未命中</th><th>平均绝对误差 / token</th></tr></thead><tbody id="cache-predictions"></tbody></table></div>
-<div class="usage-note" id="cache-diagnostics"></div><div class="usage-note">预测按版本分别统计，来源是本地前缀和供应商 usage；冷启动、TTL、供应商缓存策略都会影响误差。thinking 等受保护历史必须留在原模型；新提问的 prompt_id 不代表历史已清除。</div></section>
+<div class="usage-note" id="cache-diagnostics"></div><div class="usage-note">预测按版本分别统计，来源是本地前缀和供应商 usage；冷启动、TTL、供应商缓存策略都会影响误差。自动模式命中复杂任务规则时，可越过 thinking 历史限制使用高级模型；其他受保护历史仍保留来源。新提问的 prompt_id 不代表历史已清除。</div></section>
 
 <p class="foot">费用按请求发出时的价格快照核算，USD 与 CNY 分开记账；路由金额比较可按配置汇率折算，不影响原币种费用。“历史估算”使用当前配置和历史请求时间回算，保留原始记录；未知价格或缺失用量不会当作免费。金额尚未与供应商账单对账，模拟数据仅用于演示。</p>
 </main>
@@ -161,7 +161,7 @@ function renderCriteria(saved=[]){
 function qualityChecks(){return [...$('quality-checks').children].map(row=>({id:row.dataset.id,outcome:row.querySelector('select').value,evidence:row.querySelector('textarea').value.trim()}))}
 function updateQualityOutcome(){const checks=qualityChecks();$('outcome').value=checks.some(c=>c.outcome==='failed')?'failed':checks.every(c=>c.outcome==='passed')?'passed':'unknown'}
 const reasons={prices_unknown_use_recommendation:'价格未知，按能力建议选择',currency_not_comparable:'币种不同，按能力建议选择',simple_task_rule:'简单任务规则',complexity_rule:'复杂任务规则',uncertain:'规则无法确定',uncertain_use_high:'不确定，保守使用 Opus',prices_unknown_use_high:'价格未配置',high_estimated_cheaper:'Opus 缓存后预计更便宜',switch_saving_below_threshold:'切换收益不足',history_compatibility_lock:'历史兼容性锁定',shadow_executes_high:'观察模式执行 Opus',fixed_mode:'固定模型模式',low_capability_or_context_limit:'廉价模型能力或上下文限制',tool_error_signal:'工具失败信号',classifier_simple:'分类器建议简单',classifier_complex:'分类器建议复杂'};
-Object.assign(reasons,{protected_history_requires_same_model:'受保护历史须使用原模型',text_history_switch_disabled:'文本历史切换已关闭',unknown_history_origin:'历史来源模型未知',low_protected_content:'廉价模型不可接收异源受保护内容',low_unsupported_content:'廉价模型不支持该内容',low_context_limit:'廉价模型上下文不足',high_context_limit:'高级模型上下文不足',configured_exchange_rate:'按配置汇率比较',rule_decided:'规则已有结论',classifier_disabled:'分类器未启用',classifier_invalid_decision:'分类结果无效，保守回退',classifier_uncertain:'分类器不确定，保守回退'});
+Object.assign(reasons,{complexity_overrides_thinking:'复杂任务优先使用高级模型（越过 thinking 限制）',protected_history_requires_same_model:'受保护历史须使用原模型',text_history_switch_disabled:'文本历史切换已关闭',unknown_history_origin:'历史来源模型未知',low_protected_content:'廉价模型不可接收异源受保护内容',low_unsupported_content:'廉价模型不支持该内容',low_context_limit:'廉价模型上下文不足',high_context_limit:'高级模型上下文不足',configured_exchange_rate:'按配置汇率比较',rule_decided:'规则已有结论',classifier_disabled:'分类器未启用',classifier_invalid_decision:'分类结果无效，保守回退',classifier_uncertain:'分类器不确定，保守回退'});
 async function loadHealth(){
  const version=++healthLoad;const scope=$('health-scope').value;
  $('health-scope-note').textContent='正在加载诊断…';

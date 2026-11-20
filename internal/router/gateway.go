@@ -116,7 +116,7 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		jsonResponse(w, map[string]bool{"saved": true})
 	case r.Method == "GET" && r.URL.Path == "/api/info":
-		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v2", "run_id": g.RunID, "started_at": g.StartedAt})
+		jsonResponse(w, map[string]any{"mode": g.Config.Mode, "policy_version": g.Config.Policy.Version, "routing_version": RoutingVersion, "allow_text_switch": g.Config.Policy.AllowTextSwitch, "classifier_enabled": g.Config.Classifier.Enabled, "high_model": g.Config.High.Model, "low_model": g.Config.Low.Model, "exchange_rate": g.Config.Policy.ExchangeRate, "task_summaries_enabled": g.Config.StoreTaskSummaries, "task_summary_chars": TaskSummaryChars, "dashboard_version": "diagnostics-v3", "run_id": g.RunID, "started_at": g.StartedAt})
 	default:
 		errorJSON(w, 404, "endpoint not found")
 	}

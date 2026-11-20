@@ -7,7 +7,10 @@ import (
 	"unicode/utf8"
 )
 
+const RoutingVersion = "complex-thinking-v1"
+
 type Decision struct {
+	RoutingVersion         string          `json:"routing_version,omitempty"`
 	Recommended            string          `json:"recommended"`
 	Proposed               string          `json:"proposed"`
 	Selected               string          `json:"selected"`
@@ -129,9 +132,12 @@ func Estimate(r Request, p Provider, cached, output int) *float64 {
 	return &cost
 }
 func Decide(c Config, r Request, b *branch, recommend, reason string, confidence float64) Decision {
-	d := Decision{Recommended: recommend, Confidence: confidence, Reasons: []string{reason}, Classifier: "rules", TaskChars: utf8.RuneCountInString(r.Text), TaskExtraction: r.TaskExtraction, ProtectionReasons: r.ProtectionReasons, CachePredictionVersion: "block-prefix-v4"}
+	d := Decision{RoutingVersion: RoutingVersion, Recommended: recommend, Confidence: confidence, Reasons: []string{reason}, Classifier: "rules", TaskChars: utf8.RuneCountInString(r.Text), TaskExtraction: r.TaskExtraction, ProtectionReasons: r.ProtectionReasons, CachePredictionVersion: "block-prefix-v4"}
 	_, d.SwitchBlockedReason = historyConstraint(c, r, b)
 	d.SwitchAllowed = d.SwitchBlockedReason == ""
+	if complexityOverridesThinking(c, r) {
+		d.Reasons = append(d.Reasons, "complexity_overrides_thinking")
+	}
 	if d.Recommended == "" {
 		d.Recommended = "high"
 		d.Reasons = append(d.Reasons, "uncertain_use_high")
@@ -236,11 +242,30 @@ func Decide(c Config, r Request, b *branch, recommend, reason string, confidence
 	return d
 }
 
-// A prompt ID is an attribution boundary, not proof that signed history is
-// gone. Re-evaluate each payload; a new conversation or genuinely clean compacted
-// history can be routed again without stripping or rewriting thinking blocks.
+// A locally recognized complex task may upgrade despite thinking history.
+// This is a routing policy override, not a claim that foreign signatures are
+// compatible. Forwarding still preserves every block; upstream errors surface.
+// Server-side state and unknown protection types retain their history lock.
+func complexityOverridesThinking(c Config, r Request) bool {
+	if c.Mode != "auto" || !r.HasHistory || !r.Protected || len(r.ProtectionReasons) == 0 {
+		return false
+	}
+	for _, kind := range r.ProtectionReasons {
+		if kind != "thinking" && kind != "redacted_thinking" {
+			return false
+		}
+	}
+	tier, reason, _ := Rule(r)
+	return tier == "high" && reason == "complexity_rule"
+}
+
+// A new prompt ID alone does not clear protected history. In auto mode only
+// the explicit complexity rule can override a thinking-only history lock.
 func historyConstraint(c Config, r Request, b *branch) (string, string) {
 	if !r.HasHistory {
+		return "", ""
+	}
+	if complexityOverridesThinking(c, r) {
 		return "", ""
 	}
 	if !r.Protected && c.Policy.AllowTextSwitch {
@@ -275,6 +300,9 @@ func lowRestriction(c Config, r Request) string {
 func classifierSkip(c Config, r Request, b *branch, tier string) string {
 	if c.Mode == "high" || c.Mode == "low" {
 		return "fixed_mode"
+	}
+	if complexityOverridesThinking(c, r) {
+		return "rule_decided"
 	}
 	if _, reason := historyConstraint(c, r, b); reason != "" {
 		return reason
