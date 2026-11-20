@@ -27,14 +27,24 @@ cp config.example.json config.json
 
 连接本机 HTTP 反代时，`base_url` 可以填写 `http://localhost:8000`、`http://127.0.0.1:8000` 或 `http://[::1]:8000`，端口按实际服务修改。非本机接口需使用 HTTPS。这里的 `base_url` 是上游反代地址，网关自己的 `listen` 仍使用 `127.0.0.1:8787` 等回环 IP。
 
-在示例文件中填好 `high.api_key` 和 `low.api_key` 后直接启动：
+配置完成后，在 Router 项目目录安装命令（macOS / Linux，只需一次）：
 
 ```sh
-./bin/router check -config config.json
-./bin/router claude -config config.json
+./install.sh
 ```
 
-`check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，使用子进程环境及本次会话的 `--settings` 固定 Router 地址、模型别名和本地占位认证，不修改全局或项目设置文件。会话设置保存在权限为 0600 的临时文件中，子进程退出时清理。插件、hooks、权限等普通设置继续加载。附加 Claude Code 参数放在 `--` 后面，例如 `./bin/router claude -config config.json -- --continue`。
+安装脚本编译 `bin/router` 并将 `~/.local/bin/router` 链接到它。原有 `config.json` 和数据库仍保留在 Router 项目中。若该目录尚未加入 PATH，脚本为 zsh / bash 追加 PATH 设置，按提示打开新终端即可；其他 shell 按提示加入 PATH。不会覆盖已有的其他 `router` 命令文件。可用 `./install.sh --bin-dir /your/bin --no-path-update` 指定安装目录并自行管理 PATH。
+
+以后在任意业务项目目录启动：
+
+```sh
+router check
+router claude
+```
+
+`check` 只验证配置结构，不发送模型请求。`claude` 启动本地代理和 Claude Code，使用子进程环境及本次会话的 `--settings` 固定 Router 地址、模型别名和本地占位认证，不修改 Claude Code 的全局或项目设置文件。会话设置保存在权限为 0600 的临时文件中，子进程退出时清理。插件、hooks、权限等普通设置继续加载。附加 Claude Code 参数放在 `--` 后面，例如 `router claude -- --continue`。
+
+省略 `-config` 时，优先读取 Router 可执行文件所属项目的 `config.json`，再查找可执行文件同目录、`~/.config/claude-tier-router/config.json`，最后兼容当前目录的 `config.json`；启动时会打印实际配置路径。通过安装链接启动也能找到原项目配置，数据库相对路径仍以配置文件目录为基准。需要使用其他配置时，继续使用 `router claude -config /path/to/config.json`。无需安装也可使用原来的 `./bin/router claude -config config.json`。
 
 如果另传一个 `--settings` 文件或 JSON，启动器会保留其中其他字段及环境变量，再覆盖连接 Router 所需的字段；不会把上游密钥传入 Claude Code。原 provider 的 `apiKeyHelper`、API Key、OAuth token 与云 provider 开关仅在这次会话中停用。企业 managed settings 仍遵循 Claude Code 自身的更高优先级。
 
@@ -42,21 +52,28 @@ cp config.example.json config.json
 
 provider 仍可使用 `api_key_env`；非空 `api_key` 优先。`config.json` 已被 Git 忽略，程序不会把上游密钥写入日志或统计接口。网关只允许本机 loopback 监听，拒绝跨来源浏览器请求，不用于共享网络部署。
 
-在公司电脑测试时，先按上述步骤克隆并编译，在本机新建配置并填写公司的两组接口。公司套餐价格未知时，把对应 `prices` 设为 `null`；把 `mode` 改为 `auto`。希望在列表中识别问题，可启用 `store_task_summaries: true`，会在本机保存提问前 80 字。
+在公司电脑测试时，先按上述步骤克隆、配置并运行 `./install.sh`，在本机配置中填写公司的两组接口。公司套餐价格未知时，把对应 `prices` 设为 `null`；把 `mode` 改为 `auto`。希望在列表中识别问题，可启用 `store_task_summaries: true`，会在本机保存提问前 80 字。
 
-从你要测试的业务项目目录启动（替换为实际克隆路径）：
+从你要测试的业务项目目录启动：
 
 ```sh
 cd /path/to/your/work-project
-/path/to/claude-tier-router/bin/router claude -config /path/to/claude-tier-router/config.json
+router claude
 ```
 
 打开 http://127.0.0.1:8787 查看统计。路由器跟随 Claude Code 退出；修改配置后重新启动。每台电脑使用独立的本地配置与数据库，仓库不携带密钥、历史提问或调用数据。
 
+更新代码时，在 Router 项目目录执行以下命令，重新启动 `router claude` 即可。安装链接依赖这个目录，请保留它；移动目录后重新处理旧链接并安装。
+
+```sh
+git pull --ff-only
+./install.sh
+```
+
 也可独立启动代理：
 
 ```sh
-./bin/router serve -config config.json
+router serve
 ```
 
 在另一个终端、业务项目目录运行：

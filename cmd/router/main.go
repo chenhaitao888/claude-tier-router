@@ -28,7 +28,7 @@ func run(args []string) error {
 	}
 	command := args[0]
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
-	path := fs.String("config", "config.json", "configuration path")
+	path := fs.String("config", "", "configuration path (default: router checkout or user configuration)")
 	listen := fs.String("listen", "127.0.0.1:8787", "demo listen address")
 	if err := fs.Parse(args[1:]); err != nil {
 		return err
@@ -39,10 +39,15 @@ func run(args []string) error {
 	if command != "serve" && command != "claude" && command != "check" {
 		return errors.New("unknown command")
 	}
-	c, err := router.LoadConfig(*path)
+	configPath, err := resolveConfigPath(*path)
 	if err != nil {
 		return err
 	}
+	c, err := router.LoadConfig(configPath)
+	if err != nil {
+		return err
+	}
+	fmt.Println("Configuration:", configPath)
 	if command == "check" {
 		fmt.Println("Configuration valid; mode:", c.Mode)
 		fmt.Printf("Local question summaries: %t (max %d characters).\n", c.StoreTaskSummaries, router.TaskSummaryChars)
