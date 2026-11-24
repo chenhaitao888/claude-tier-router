@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-const RoutingVersion = "cooperation-v1"
+const RoutingVersion = "cooperation-lookup-v2"
 
 type Decision struct {
 	RoutingVersion         string          `json:"routing_version,omitempty"`
@@ -97,6 +97,12 @@ func Rule(r Request) (string, string, float64) {
 		return "high", "tool_error_signal", 0.8
 	}
 	text := strings.ToLower(r.Text)
+	// A bounded identifier lookup may mention the architecture it searches.
+	// It is not a design request. Do not apply this exception to background
+	// prompts (which may include security/permission checks) or compaction.
+	if (r.RequestClass == "" || r.RequestClass == "main" || r.RequestClass == "subagent") && isLookupTask(text) {
+		return "low", "lookup_task_rule", 0.8
+	}
 	for _, term := range []string{"architecture", "deadlock", "race condition", "security", "migration", "distributed", "跨模块", "架构", "死锁", "并发", "安全漏洞", "分布式", "重构", "又错", "仍然失败"} {
 		if strings.Contains(text, term) {
 			return "high", "complexity_rule", 0.85

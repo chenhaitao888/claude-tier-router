@@ -13,6 +13,7 @@ import (
 
 type Request struct {
 	Model                string
+	RequestClass         string
 	CooperationRole      string
 	CooperationDelegated bool
 	Raw                  []byte

@@ -93,7 +93,7 @@ func cooperativeLaunch(args []string, settings map[string]json.RawMessage, addre
 		}
 	}
 	for name, definition := range map[string]any{
-		router.ExecutorModel: map[string]any{"description": "Execute a bounded plan: collect specified data, format a document from approved conclusions, or make an exact local code change. Return to the parent for new design decisions.", "prompt": executorPrompt, "model": router.ExecutorModel, "disallowedTools": []string{"Agent", "Task"}},
+		router.ExecutorModel: map[string]any{"description": "Execute a bounded plan: batch code/evidence lookups for existing table names, event keys and constants with file/line references; collect specified data; format approved conclusions; or make an exact local code change. Return ambiguity and new design decisions to the parent.", "prompt": executorPrompt, "model": router.ExecutorModel, "disallowedTools": []string{"Agent", "Task"}},
 		router.ReviewerModel: map[string]any{"description": "Independently review a completed delegated change or data report against the parent's acceptance criteria; analyze ambiguity and report required corrections.", "prompt": reviewerPrompt, "model": router.ReviewerModel, "tools": []string{"Read", "Grep", "Glob", "Bash"}, "disallowedTools": []string{"Agent", "Task", "Edit", "Write"}},
 	} {
 		if _, exists := agents[name]; exists {

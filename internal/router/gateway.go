@@ -183,6 +183,7 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	if class == "" {
 		class = "main"
 	}
+	req.RequestClass = class
 	if len(session) > 200 || len(prompt) > 200 || len(agent) > 200 || len(class) > 100 {
 		errorJSON(w, 400, "invalid attribution identifiers")
 		return

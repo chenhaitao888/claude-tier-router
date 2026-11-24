@@ -17,9 +17,10 @@ const ExecutorModel = "router-executor"
 const ReviewerModel = "router-reviewer"
 
 type CooperationTrace struct {
-	Role        string `json:"role"`
-	Stage       string `json:"stage"`
-	Attribution string `json:"attribution"`
+	Role               string `json:"role"`
+	Stage              string `json:"stage"`
+	Attribution        string `json:"attribution"`
+	DelegationObserved *bool  `json:"delegation_observed,omitempty"`
 }
 type CooperationRun struct {
 	Session         string    `json:"session_id"`
@@ -294,6 +295,12 @@ func (g *Gateway) identifyCooperation(req *Request, rec *Record) error {
 	}
 	req.CooperationRole = role
 	rec.Cooperation = &CooperationTrace{Role: role, Stage: cooperationStage(role), Attribution: attribution}
+	if role == "coordinator" {
+		// A per-request observation, not a guess about why the model did or did
+		// not delegate. nil distinguishes legacy records and non-parent roles.
+		observed := req.CooperationDelegated
+		rec.Cooperation.DelegationObserved = &observed
+	}
 	return nil
 }
 
