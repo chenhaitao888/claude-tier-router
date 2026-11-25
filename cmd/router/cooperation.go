@@ -116,8 +116,11 @@ func cooperativeLaunch(args []string, settings map[string]json.RawMessage, addre
 			return nil, errors.New("Claude hooks must be an object of hook arrays")
 		}
 	}
-	for _, event := range []string{"SubagentStart", "SubagentStop"} {
-		group, _ := json.Marshal(map[string]any{"matcher": "^router-(executor|reviewer)$", "hooks": []any{map[string]any{"type": "http", "url": address + "/api/cooperation/events", "timeout": 5}}})
+	for event, matcher := range map[string]string{
+		"SubagentStart": "^router-(executor|reviewer)$", "SubagentStop": "^router-(executor|reviewer)$",
+		"PostToolUse": "^(Agent|Task)$",
+	} {
+		group, _ := json.Marshal(map[string]any{"matcher": matcher, "hooks": []any{map[string]any{"type": "http", "url": address + "/api/cooperation/events", "timeout": 5}}})
 		hooks[event] = append(hooks[event], group)
 	}
 	settings["hooks"], _ = json.Marshal(hooks)

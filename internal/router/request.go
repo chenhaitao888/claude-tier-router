@@ -16,6 +16,7 @@ type Request struct {
 	RequestClass         string
 	CooperationRole      string
 	CooperationDelegated bool
+	CooperationFollowup  string
 	Raw                  []byte
 	Fields               map[string]json.RawMessage
 	Messages             []struct {

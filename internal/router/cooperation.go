@@ -20,19 +20,24 @@ type CooperationTrace struct {
 	Role               string `json:"role"`
 	Stage              string `json:"stage"`
 	Attribution        string `json:"attribution"`
+	Followup           string `json:"followup,omitempty"`
 	DelegationObserved *bool  `json:"delegation_observed,omitempty"`
 }
 type CooperationRun struct {
-	Session         string    `json:"session_id"`
-	Prompt          string    `json:"prompt_id"`
-	Agent           string    `json:"agent_id"`
-	Role            string    `json:"role"`
-	Status          string    `json:"status"`
-	Started         time.Time `json:"started_at"`
-	Updated         time.Time `json:"updated_at"`
-	Attempts        int       `json:"attempts"`
-	NeedsDesign     int       `json:"needs_design_reports"`
-	ChangesRequired int       `json:"changes_required_reports"`
+	Session          string    `json:"session_id"`
+	Prompt           string    `json:"prompt_id"`
+	Agent            string    `json:"agent_id"`
+	Role             string    `json:"role"`
+	Status           string    `json:"status"`
+	Started          time.Time `json:"started_at"`
+	Updated          time.Time `json:"updated_at"`
+	Attempts         int       `json:"attempts"`
+	DeliveryReady    bool      `json:"delivery_ready,omitempty"`
+	WholeTaskChecked bool      `json:"whole_task_checked,omitempty"`
+	ToolUseID        string    `json:"tool_use_id,omitempty"`
+	OnSuccess        string    `json:"on_success,omitempty"`
+	NeedsDesign      int       `json:"needs_design_reports"`
+	ChangesRequired  int       `json:"changes_required_reports"`
 }
 
 func cooperationRole(model string) string {
@@ -72,10 +77,19 @@ func (g *Gateway) cooperationEvent(w http.ResponseWriter, r *http.Request) {
 		Type    string `json:"agent_type"`
 		Event   string `json:"hook_event_name"`
 		Message string `json:"last_assistant_message"`
+		agentReturnEvent
 	}
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 2<<20))
 	if d.Decode(&event) != nil || d.Decode(new(any)) != io.EOF {
 		errorJSON(w, 400, "invalid cooperation hook")
+		return
+	}
+	if event.Event == "PostToolUse" {
+		if err := g.Store.bindAgentReturn(event.Session, event.Prompt, event.Agent, event.agentReturnEvent); err != nil {
+			errorJSON(w, 503, "could not record agent return")
+			return
+		}
+		jsonResponse(w, map[string]any{})
 		return
 	}
 	role := cooperationRole(event.Type)
@@ -95,18 +109,24 @@ func (g *Gateway) cooperationEvent(w http.ResponseWriter, r *http.Request) {
 	if event.Event == "SubagentStop" {
 		status = cooperationOutcome(role, event.Message)
 	}
-	if err := g.Store.saveCooperationEvent(CooperationRun{Session: event.Session, Prompt: event.Prompt, Agent: event.Agent, Role: role, Status: status}, event.Event); err != nil {
+	ready, wholeTask := reportReadiness(status, event.Message)
+	if err := g.Store.saveCooperationEvent(CooperationRun{Session: event.Session, Prompt: event.Prompt, Agent: event.Agent, Role: role, Status: status, DeliveryReady: ready, WholeTaskChecked: wholeTask}, event.Event); err != nil {
 		errorJSON(w, 409, "could not record cooperation event or agent identity changed")
 		return
 	}
 	jsonResponse(w, map[string]any{})
 }
 
-func cooperationOutcome(role, message string) string {
+func reportJSON(message string) string {
 	message = strings.TrimSpace(message)
 	if strings.HasPrefix(message, "```json\n") && strings.HasSuffix(message, "\n```") {
 		message = strings.TrimSuffix(strings.TrimPrefix(message, "```json\n"), "\n```")
 	}
+	return message
+}
+
+func cooperationOutcome(role, message string) string {
+	message = reportJSON(message)
 	// Ignore all explanation fields, but do not scan prose for a success keyword.
 	var result struct {
 		Status string `json:"status"`
@@ -166,10 +186,12 @@ func (s *Store) saveCooperationEvent(next CooperationRun, event string) error {
 				return nil
 			}
 			run.Attempts++
+			run.ToolUseID, run.OnSuccess = "", ""
 		} else if run.Status != "running" {
 			return nil
 		}
 		run.Status, run.Updated = next.Status, now
+		run.DeliveryReady, run.WholeTaskChecked = next.DeliveryReady, next.WholeTaskChecked
 	} else if err != sql.ErrNoRows {
 		return err
 	}
@@ -286,21 +308,8 @@ func (g *Gateway) identifyCooperation(req *Request, rec *Record) error {
 	if role != "coordinator" && (rec.Agent == "" || (rec.Class != "subagent" && rec.Class != "compaction")) {
 		return errors.New("cooperation worker requires a subagent identity")
 	}
-	if role == "coordinator" {
-		var count int
-		if err = g.Store.db.QueryRow("SELECT (SELECT count(*) FROM cooperation_runs WHERE session=? AND prompt=?)+(SELECT count(*) FROM records WHERE session=? AND prompt=? AND json_extract(payload,'$.cooperation.role') IN ('executor','reviewer'))", rec.Session, rec.Prompt, rec.Session, rec.Prompt).Scan(&count); err != nil {
-			return err
-		}
-		req.CooperationDelegated = count > 0
-	}
 	req.CooperationRole = role
 	rec.Cooperation = &CooperationTrace{Role: role, Stage: cooperationStage(role), Attribution: attribution}
-	if role == "coordinator" {
-		// A per-request observation, not a guess about why the model did or did
-		// not delegate. nil distinguishes legacy records and non-parent roles.
-		observed := req.CooperationDelegated
-		rec.Cooperation.DelegationObserved = &observed
-	}
 	return nil
 }
 

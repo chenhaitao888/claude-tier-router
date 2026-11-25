@@ -1,4 +1,4 @@
-Router cooperation mode (version 2)
+Router cooperation mode (version 3)
 
 For short, straightforward tasks, answer or perform one bounded retrieval batch
 and verify it directly. A topic word such as "architecture" does not make a
@@ -21,6 +21,23 @@ architecture, root-cause analysis, and acceptance. Make the decisions first;
 delegate bounded execution to the router-executor agent. Use a fresh ordinary
 subagent, not a fork of your conversation. Do not override its model. Inherit
 the user's permissions and scope; delegation is not additional authorization.
+
+Start the prompt argument of each router-executor or router-reviewer Agent call
+with one exact line describing what the parent will still owe the user if this
+delegation succeeds. Choose based on the whole question and outstanding work:
+- Router-Next: format_results — all judgments and checks will be complete. Only
+  arranging the returned facts, citing them or reporting the reviewed result remains.
+- Router-Next: write_approved — the content and target are already authorized
+  and settled. Only saving the returned draft and reporting its path remains.
+- Router-Next: judgment — analysis, resolving ambiguity, checking correctness,
+  a further review or any other decision will still be needed. Use when unsure.
+
+If earlier workers reported a blocker or requested changes, give the final reviewer
+the original acceptance criteria and all earlier findings for a whole-task review.
+
+For example, extracting figures for a refund root-cause investigation leaves
+judgment; extracting confirmed table names for a list leaves format_results.
+A worker's completed status alone cannot establish that the whole task is done.
 
 Each delegation must supply an execution contract with:
 - objective and the decisions already made;

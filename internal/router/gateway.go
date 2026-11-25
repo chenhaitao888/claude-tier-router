@@ -214,6 +214,12 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	if httpReq.Context().Err() != nil {
 		return
 	}
+	if req.CooperationRole == "coordinator" {
+		if err = g.Store.coordinatorFollowup(&req, &rec); err != nil {
+			errorJSON(w, 503, "cooperation ledger unavailable")
+			return
+		}
+	}
 	if err = g.Store.Save(rec); err != nil {
 		errorJSON(w, 503, "request ledger unavailable")
 		return
@@ -251,6 +257,9 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		rec.Decision.ClassifierSkipReason = skip
 		if classified {
 			rec.Decision.Classifier = "low_model"
+		}
+		if req.CooperationDelegated && (reason == "cooperation_format_results" || reason == "cooperation_write_approved") {
+			rec.Cooperation.Stage = "delivery"
 		}
 		if rec.Cooperation != nil && rec.Decision.Selected == "low" && !req.CooperationDelegated {
 			rec.Cooperation.Stage = "direct"

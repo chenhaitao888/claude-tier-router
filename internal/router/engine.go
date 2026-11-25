@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-const RoutingVersion = "cooperation-lookup-v2"
+const RoutingVersion = "cooperation-followup-v3"
 
 type Decision struct {
 	RoutingVersion         string          `json:"routing_version,omitempty"`
@@ -88,6 +88,12 @@ func (e *Engine) Acquire(key string) (*branch, func()) {
 }
 func Rule(r Request) (string, string, float64) {
 	if r.CooperationRole == "coordinator" && r.CooperationDelegated {
+		if !r.ComplexContent && r.ToolFailureCount() == 0 {
+			switch r.CooperationFollowup {
+			case formatResults, writeApproved:
+				return "low", "cooperation_" + r.CooperationFollowup, 1
+			}
+		}
 		return "high", "cooperation_coordination", 1
 	}
 	if r.ComplexContent {

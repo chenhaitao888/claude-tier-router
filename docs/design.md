@@ -40,9 +40,9 @@
 
 ## 可选的设计与执行协作
 
-`router claude -cooperate` 是会话级选项，要求共享网关为 auto；普通和协作启动器可复用同一服务。`cooperation.enabled` 设置启动器默认值，单次开关在配置副本上生效，不改变共享服务的配置身份。启动器合并临时 agents、系统补充说明与 SubagentStart/Stop HTTP hooks，保留业务目录、用户权限和其他 hooks，不写全局代理配置。
+`router claude -cooperate` 是会话级选项，要求共享网关为 auto；普通和协作启动器可复用同一服务。`cooperation.enabled` 设置启动器默认值，单次开关在配置副本上生效，不改变共享服务的配置身份。启动器合并临时 agents、系统补充说明与 SubagentStart、SubagentStop 和 Agent/Task 的 PostToolUse HTTP hooks，保留业务目录、用户权限和其他 hooks，不写全局代理配置。
 
-主模型别名为 router-coordinator，未委派时沿用原有逐请求规则和分类器，简单请求可直接交给低档。已观测同一问题的子任务后，主会话优先高级模型，允许越过仅由 thinking 引起的历史锁；其他服务器状态仍遵循约束。执行 router-executor 和验收 router-reviewer 分别固定 low/high，不按计划文本中的复杂关键词或缓存价差重分配，也不额外付费分类。二者保留独立的原始历史和缓存，仍校验上下文、内容能力与来源。执行工具仍由 Claude Code 完成。
+主模型别名为 router-coordinator，未委派时沿用原有逐请求规则和分类器，简单请求可直接交给低档。主会话的 Agent 工具完成后，PostToolUse 按会话、问题、agent 和工具调用 ID 绑定委派计划，SubagentStop 提供结构化回报。交接计划与本轮工具结果一致、子任务已结束且无待决事项时，整理结果或写入已确认正文可推荐低档。规划、异常、身份或状态不明时推荐高级档。仅高级统筹可越过 thinking 历史锁。低档收尾仍须经过缓存和历史切换约束。执行 router-executor 和验收 router-reviewer 分别固定 low/high，不按计划文本中的复杂关键词或缓存价差重分配，也不额外付费分类。二者保留独立的原始历史和缓存，仍校验上下文、内容能力与来源。执行工具仍由 Claude Code 完成。
 
 角色来自保留的模型别名或精确的本地 hook 身份绑定，不从提示词或工具返回内容提取。hooks 中的 session_id+prompt_id+agent_id 形成持久化绑定；header 缺失 prompt 时只允许唯一绑定补齐，不能猜最近问题。绑定也覆盖 Claude 对自定义 agent 的单次模型参数覆盖。后台辅助请求保持普通路由；执行子代理的压缩请求使用自己的分支状态。
 

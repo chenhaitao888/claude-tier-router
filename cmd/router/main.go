@@ -121,7 +121,7 @@ func run(args []string) error {
 	defer cleanup()
 	fmt.Println("Claude Code gateway:", lease.Address, "| shared service; session settings applied")
 	if launchConfig.Cooperation.Enabled {
-		fmt.Println("Cooperation: auto/simple direct; Opus coordination/review; Flash execution. Worker outcomes are model reports, not manual acceptance.")
+		fmt.Printf("Cooperation: %s for analysis/review, %s for execution and eligible delivery steps.\n", c.High.Model, c.Low.Model)
 	}
 	child := exec.Command("claude", args...)
 	child.Stdin, child.Stdout, child.Stderr = os.Stdin, os.Stdout, os.Stderr

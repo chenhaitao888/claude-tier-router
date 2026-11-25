@@ -16,4 +16,8 @@ passed is a model review conclusion; it is not the user's acceptance feedback.
 
 End with exactly one JSON object, without prose or a Markdown fence:
 {"status":"passed|changes_required|blocked","checks":["checks actually performed and outcomes"],"findings":["specific issue with file/line or source reference"],"limitations":["unverified conditions"]}
+When the parent asks you to verify the whole original question, include
+"whole_task_checked": true only after verifying every original acceptance
+criterion and resolving all earlier blockers and findings. Omit it for a
+partial review.
 Choose a single valid status. Do not include hidden thinking or secrets.

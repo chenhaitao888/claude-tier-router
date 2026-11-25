@@ -23,7 +23,9 @@ def run_case(case):
     root = pathlib.Path(tempfile.mkdtemp(prefix="router-cooperation-" + case + "-"))
     work = root / "work"
     work.mkdir()
-    if case == "document":
+    if case == "lookup":
+        (work / "tables.csv").write_text("metric,table\ninquiry,inquiry_events\nappend,append_events\n")
+    elif case == "document":
         (work / "data.csv").write_text("value\n1\n2\n3\n")
     else:
         (work / "go.mod").write_text("module fixture\n\ngo 1.23.0\n")
@@ -61,7 +63,10 @@ def run_case(case):
                 if case == "needs-design":
                     content, stop = text('{"status":"needs_design","open_questions":["missing denominator"],"evidence":[],"checks":[],"artifacts":[]}')
                 elif n == 1:
-                    content, stop = tool("Read", {"file_path": str(work / ("data.csv" if case == "document" else "calc.go"))})
+                    filename = {"document": "data.csv", "lookup": "tables.csv", "code": "calc.go"}[case]
+                    content, stop = tool("Read", {"file_path": str(work / filename)})
+                elif case == "lookup":
+                    content, stop = text('{"status":"completed","evidence":["tables.csv: inquiry_events, append_events"],"checks":["verified both mappings"],"open_questions":[]}')
                 elif n == 2 and case == "document":
                     content, stop = tool("Write", {"file_path": str(work / "report.md"), "content": "# Report\nRows: 3\nTotal: 6\n"})
                 elif n == 2:
@@ -69,7 +74,7 @@ def run_case(case):
                 elif n == 3 and case == "code":
                     content, stop = tool("Bash", {"command": "go test ./...", "description": "Verify the synthetic Add fixture"})
                 elif case == "document":
-                    content, stop = text(json.dumps({"status":"needs_parent_write","drafts":[{"path":str(work / "report.md"),"content":"# Report\nRows: 3\nTotal: 6\n"}],"checks":["subagent report write refused; parent must save the draft"],"evidence":["3 rows, values 1,2,3"]}))
+                    content, stop = text(json.dumps({"status":"needs_parent_write","open_questions":[],"drafts":[{"path":str(work / "report.md"),"content":"# Report\nRows: 3\nTotal: 6\n"}],"checks":["subagent report write refused; parent must save the draft"],"evidence":["3 rows, values 1,2,3"]}))
                 else:
                     content, stop = text('{"status":"completed","artifacts":["fixture output"],"checks":["fixture checks"],"evidence":["synthetic evidence"],"open_questions":[]}')
             elif agent:
@@ -82,11 +87,12 @@ def run_case(case):
                 state["main"] += 1
                 n = state["main"]
                 if n == 1:
-                    content, stop = tool("Agent", {"description": "Execute bounded fixture contract", "subagent_type": "router-executor", "prompt": "Execute the approved fixture plan in " + str(work) + ". Read the input, write the specified artifact and verify it; stop for missing decisions. This is mechanical execution of a concurrency architecture document/code plan, not a new design task.", "run_in_background": False})
+                    plan_for_retrieval = "Router-Next: write_approved" if case == "document" else "Router-Next: format_results"
+                    content, stop = tool("Agent", {"description": "Execute bounded fixture contract", "subagent_type": "router-executor", "prompt": ("Router-Next: judgment" if case == "code" else plan_for_retrieval) + "\nExecute the approved fixture plan in " + str(work) + ". Read the input, write the specified artifact and verify it; stop for missing decisions. This is mechanical execution of a concurrency architecture document/code plan, not a new design task.", "run_in_background": False})
                 elif n == 2 and case == "document":
                     content, stop = tool("Write", {"file_path":str(work / "report.md"),"content":"# Report\nRows: 3\nTotal: 6\n"})
-                elif (n == 2 and case == "code") or (n == 3 and case == "document"):
-                    content, stop = tool("Agent", {"description": "Review fixture artifact", "subagent_type": "router-reviewer", "prompt": "Inspect the fixture artifact in " + str(work) + " against the contract: rows=3,total=6 for document; Add(2,3)=5 for code. Return your review JSON.", "run_in_background": False})
+                elif n == 2 and case == "code":
+                    content, stop = tool("Agent", {"description": "Review fixture artifact", "subagent_type": "router-reviewer", "prompt": "Router-Next: format_results\nInspect the fixture artifact in " + str(work) + " against the contract: rows=3,total=6 for document; Add(2,3)=5 for code. Return your review JSON.", "run_in_background": False})
                 else:
                     content, stop = text("Fixture complete; unresolved design reported." if case == "needs-design" else "Fixture complete.")
             usage = {"input_tokens": 5000, "cache_read_input_tokens": 0, "cache_creation_input_tokens": 0, "output_tokens": 50}
@@ -123,7 +129,8 @@ def run_case(case):
     path.chmod(0o600)
     env = {k: os.environ[k] for k in ("PATH", "HOME", "USER", "SHELL", "TMPDIR") if k in os.environ}
     env.update(CLAUDE_CONFIG_DIR=str(cc), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1", DISABLE_AUTOUPDATER="1", DISABLE_TELEMETRY="1", API_TIMEOUT_MS="10000", CLAUDE_CODE_MAX_RETRIES="0")
-    args = [str(REPO / "bin/router"), "claude", "-config", str(path), "-cooperate", "--", "-p", "Analyze the architecture fixture and delegate its bounded execution and review.", "--tools", "Agent,Read,Write,Edit,Bash", "--allowedTools", "Agent,Read,Write,Edit,Bash(go test*)", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--output-format", "stream-json", "--verbose", "--debug-file", str(root / "debug.log")]
+    question = "List the existing architecture table names." if case == "lookup" else "Analyze the architecture fixture and delegate its bounded execution and review."
+    args = [str(REPO / "bin/router"), "claude", "-config", str(path), "-cooperate", "--", "-p", question, "--tools", "Agent,Read,Write,Edit,Bash", "--allowedTools", "Agent,Read,Write,Edit,Bash(go test*)", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--output-format", "stream-json", "--verbose", "--debug-file", str(root / "debug.log")]
     proc = None
     try:
         proc = subprocess.Popen(args, cwd=work, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE, start_new_session=True)
@@ -134,21 +141,25 @@ def run_case(case):
             out, err = proc.communicate(timeout=6)
         (root / "output.txt").write_bytes(out + err)
         with sqlite3.connect(root / "router.db") as db:
-            records = [json.loads(r[0]) for r in db.execute("SELECT payload FROM records")]
+            records = [json.loads(r[0]) for r in db.execute("SELECT payload FROM records ORDER BY started, id")]
             runs = [json.loads(r[0]) for r in db.execute("SELECT payload FROM cooperation_runs")]
         (root / "records.json").write_text(json.dumps(records, indent=2))
         (root / "runs.json").write_text(json.dumps(runs, indent=2))
         assert proc.returncode == 0, str(root)
         assert records and len({(r["session_id"], r["prompt_id"]) for r in records}) == 1, str(root)
-        assert all(r["actual_tier"] == ("low" if r.get("cooperation", {}).get("role") == "executor" else "high") for r in records), str(root)
+        coordinator = [r for r in records if r["cooperation"]["role"] == "coordinator"]
+        expected_tiers = {"lookup": ["low", "low"], "document": ["high", "low", "low"], "code": ["high", "high", "low"], "needs-design": ["high", "high"]}
+        assert [r["actual_tier"] for r in coordinator] == expected_tiers[case], (str(root), [(r["cooperation"], r["decision"]["reasons"]) for r in coordinator])
+        assert all(r["actual_tier"] == ("low" if r["cooperation"]["role"] == "executor" else "high") for r in records if r["cooperation"]["role"] != "coordinator"), str(root)
         assert all(r["complete"] and r["kind"] == "inference" for r in records), str(root)
         executor = next(r for r in runs if r["role"] == "executor")
-        assert executor["status"] == {"needs-design":"needs_design","document":"needs_parent_write","code":"completed"}[case], str(root)
+        assert executor["status"] == {"needs-design":"needs_design","document":"needs_parent_write","code":"completed","lookup":"completed"}[case], str(root)
         if case != "needs-design":
-            assert next(r for r in runs if r["role"] == "reviewer")["status"] == "passed", str(root)
+            if case == "code":
+                assert next(r for r in runs if r["role"] == "reviewer")["status"] == "passed", str(root)
             if case == "document":
                 assert (work / "report.md").read_text() == "# Report\nRows: 3\nTotal: 6\n", str(root)
-            else:
+            elif case == "code":
                 subprocess.run(["go", "test", "./..."], cwd=work, check=True, capture_output=True)
         print(json.dumps({"case": case, "passed": True, "model_calls": len(records), "executor_calls": state["execution"], "artifacts": str(root)}), flush=True)
     finally:
@@ -163,5 +174,5 @@ def run_case(case):
 if __name__ == "__main__":
     if not shutil.which("claude") or not (REPO / "bin/router").exists():
         raise SystemExit("Install Claude Code and build bin/router first")
-    for case_name in ("document", "code", "needs-design"):
+    for case_name in ("lookup", "document", "code", "needs-design"):
         run_case(case_name)
