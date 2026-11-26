@@ -130,7 +130,7 @@ func launchArgs(existing []string, c router.Config, address string) ([]string, f
 	}
 	cleanup := func() { os.RemoveAll(dir) }
 	if c.Cooperation.Enabled {
-		args, err = cooperativeLaunch(args, settings, address, dir, c.Cooperation.ExecutorLimit())
+		args, err = cooperativeLaunch(args, settings, address, dir, c.Cooperation)
 		if err != nil {
 			cleanup()
 			return nil, nil, err

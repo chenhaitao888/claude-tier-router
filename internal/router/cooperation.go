@@ -22,6 +22,7 @@ type CooperationTrace struct {
 	Attribution        string `json:"attribution"`
 	Followup           string `json:"followup,omitempty"`
 	DelegationObserved *bool  `json:"delegation_observed,omitempty"`
+	AgentToolAvailable *bool  `json:"agent_tool_available,omitempty"`
 }
 type CooperationRun struct {
 	Session          string    `json:"session_id"`

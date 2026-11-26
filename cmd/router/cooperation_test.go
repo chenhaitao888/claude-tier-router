@@ -105,3 +105,44 @@ func TestCooperationDoesNotChangeSharedRuntimeIdentity(t *testing.T) {
 		t.Fatal("session option leaked into shared settings")
 	}
 }
+
+func TestCooperativeBatchHooksPreserveClientSettings(t *testing.T) {
+	for _, tc := range []struct {
+		rules   map[string]string
+		enabled bool
+	}{
+		{nil, true}, {map[string]string{"Read": "handoff"}, true}, {map[string]string{}, false},
+	} {
+		c := router.Config{Cooperation: router.CooperationConfig{Enabled: true, BatchTools: tc.rules}}
+		args, cleanup, err := launchArgs([]string{"--settings", `{"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"echo original"}]}]}}`}, c, "http://127.0.0.1:8787")
+		if err != nil {
+			t.Fatal(err)
+		}
+		raw, err := os.ReadFile(args[1])
+		cleanup()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var settings struct {
+			Hooks map[string][]struct {
+				Matcher string
+				Hooks   []struct{ URL string }
+			}
+		}
+		if err = json.Unmarshal(raw, &settings); err != nil {
+			t.Fatal(err)
+		}
+		pre := settings.Hooks["PreToolUse"]
+		fail := settings.Hooks["PostToolUseFailure"]
+		if len(pre) == 0 || pre[0].Matcher != "Bash" {
+			t.Fatal("lost user hook")
+		}
+		if tc.enabled {
+			if len(pre) != 2 || pre[1].Matcher != c.Cooperation.BatchToolMatcher() || pre[1].Hooks[0].URL != "http://127.0.0.1:8787"+router.DelegationHookPath || len(fail) != 1 {
+				t.Fatal(settings)
+			}
+		} else if len(pre) != 1 || len(fail) != 0 {
+			t.Fatal("registered disabled hooks", settings)
+		}
+	}
+}

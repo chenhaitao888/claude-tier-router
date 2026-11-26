@@ -38,7 +38,7 @@ func readSessionFile(path string) ([]byte, error) {
 	return raw, nil
 }
 
-func cooperativeLaunch(args []string, settings map[string]json.RawMessage, address, dir string, executorLimit int) ([]string, error) {
+func cooperativeLaunch(args []string, settings map[string]json.RawMessage, address, dir string, config router.CooperationConfig) ([]string, error) {
 	agents := map[string]json.RawMessage{}
 	var extra []string
 	out := []string{}
@@ -105,7 +105,7 @@ func cooperativeLaunch(args []string, settings map[string]json.RawMessage, addre
 	if err != nil {
 		return nil, err
 	}
-	extra = append(extra, strings.ReplaceAll(coordinatorPrompt, "{{executor_request_limit}}", strconv.Itoa(executorLimit)))
+	extra = append(extra, strings.ReplaceAll(coordinatorPrompt, "{{executor_request_limit}}", strconv.Itoa(config.ExecutorLimit())))
 	path := filepath.Join(dir, "cooperation.md")
 	if err = os.WriteFile(path, []byte(strings.Join(extra, "\n\n")), 0600); err != nil {
 		return nil, err
@@ -122,6 +122,16 @@ func cooperativeLaunch(args []string, settings map[string]json.RawMessage, addre
 	} {
 		group, _ := json.Marshal(map[string]any{"matcher": matcher, "hooks": []any{map[string]any{"type": "http", "url": address + "/api/cooperation/events", "timeout": 5}}})
 		hooks[event] = append(hooks[event], group)
+	}
+	if matcher := config.BatchToolMatcher(); matcher != "" {
+		matchers := map[string]string{
+			"PreToolUse":         matcher,
+			"PostToolUseFailure": "^(Agent|Task)$",
+		}
+		for event, matcher := range matchers {
+			group, _ := json.Marshal(map[string]any{"matcher": matcher, "hooks": []any{map[string]any{"type": "http", "url": address + router.DelegationHookPath, "timeout": 5}}})
+			hooks[event] = append(hooks[event], group)
+		}
 	}
 	settings["hooks"], _ = json.Marshal(hooks)
 	return append([]string{"--agents", string(definitions), "--append-system-prompt-file", path}, out...), nil

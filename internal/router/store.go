@@ -74,7 +74,12 @@ func OpenStore(path string) (*Store, error) {
  CREATE TABLE IF NOT EXISTS task_labels(session TEXT NOT NULL, prompt TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt));
  CREATE TABLE IF NOT EXISTS cooperation_runs(session TEXT NOT NULL, prompt TEXT NOT NULL, agent TEXT NOT NULL, payload TEXT NOT NULL, PRIMARY KEY(session,prompt,agent));
  CREATE INDEX IF NOT EXISTS records_task ON records(session,prompt);
- PRAGMA user_version=3;`)
+ CREATE TABLE IF NOT EXISTS cooperation_batches(session TEXT NOT NULL, prompt TEXT NOT NULL, tool TEXT NOT NULL, first_digest TEXT NOT NULL,
+   signal_request TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'probe', continued INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(session,prompt,tool));
+ CREATE TABLE IF NOT EXISTS cooperation_batch_calls(session TEXT NOT NULL, call TEXT NOT NULL, tool TEXT NOT NULL, request TEXT NOT NULL,
+   outcome TEXT NOT NULL DEFAULT '', PRIMARY KEY(session,call,tool));
+ CREATE INDEX IF NOT EXISTS batch_executor_failures ON cooperation_batch_calls(request) WHERE outcome='executor_failed';
+ PRAGMA user_version=4;`)
 	if err != nil {
 		db.Close()
 		return nil, err

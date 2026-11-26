@@ -23,7 +23,10 @@ def run_case(case):
     root = pathlib.Path(tempfile.mkdtemp(prefix="router-cooperation-" + case + "-"))
     work = root / "work"
     work.mkdir()
-    if case == "lookup":
+    if case == "batch":
+        (work / "first.txt").write_text("first-probe-evidence")
+        (work / "second.txt").write_text("worker-only-evidence")
+    elif case == "lookup":
         (work / "tables.csv").write_text("metric,table\ninquiry,inquiry_events\nappend,append_events\n")
     elif case == "document":
         (work / "data.csv").write_text("value\n1\n2\n3\n")
@@ -63,8 +66,11 @@ def run_case(case):
                 if case == "needs-design":
                     content, stop = text('{"status":"needs_design","open_questions":["missing denominator"],"evidence":[],"checks":[],"artifacts":[]}')
                 elif n == 1:
-                    filename = {"document": "data.csv", "lookup": "tables.csv", "code": "calc.go"}[case]
+                    filename = {"document": "data.csv", "lookup": "tables.csv", "code": "calc.go", "batch": "second.txt"}[case]
                     content, stop = tool("Read", {"file_path": str(work / filename)})
+                elif case == "batch":
+                    state["worker_read"] = "worker-only-evidence" in json.dumps(body["messages"][-1])
+                    content, stop = text('{"status":"completed","evidence":["second file read"],"checks":["both inputs accounted for"],"open_questions":[]}')
                 elif case == "lookup":
                     content, stop = text('{"status":"completed","evidence":["tables.csv: inquiry_events, append_events"],"checks":["verified both mappings"],"open_questions":[]}')
                 elif n == 2 and case == "document":
@@ -86,7 +92,15 @@ def run_case(case):
             else:
                 state["main"] += 1
                 n = state["main"]
-                if n == 1:
+                if case == "batch" and n in (1, 2):
+                    if n == 2:
+                        state["probe_read"] = "first-probe-evidence" in json.dumps(body["messages"][-1])
+                    filename = "first.txt" if n == 1 else "second.txt"
+                    content, stop = tool("Read", {"file_path": str(work / filename)})
+                elif n == 1 or (case == "batch" and n == 3):
+                    if case == "batch":
+                        last = json.dumps(body["messages"][-1])
+                        state["parent_denied"] = "router-executor" in last and "worker-only-evidence" not in last
                     plan_for_retrieval = "Router-Next: write_approved" if case == "document" else "Router-Next: format_results"
                     content, stop = tool("Agent", {"description": "Execute bounded fixture contract", "subagent_type": "router-executor", "prompt": ("Router-Next: judgment" if case == "code" else plan_for_retrieval) + "\nExecute the approved fixture plan in " + str(work) + ". Read the input, write the specified artifact and verify it; stop for missing decisions. This is mechanical execution of a concurrency architecture document/code plan, not a new design task.", "run_in_background": False})
                 elif n == 2 and case == "document":
@@ -124,6 +138,8 @@ def run_case(case):
     for key in ("high", "low"):
         config[key].update(base_url="http://127.0.0.1:" + str(server.server_port), model="fixture-" + key, api_key="fixture-local", context_tokens=1000000, prices=None)
     config["policy"]["allow_text_switch"] = True
+    if case == "batch":
+        config.setdefault("cooperation", {})["batch_tools"] = {"Read": "handoff"}
     path = root / "router.json"
     path.write_text(json.dumps(config))
     path.chmod(0o600)
@@ -148,12 +164,14 @@ def run_case(case):
         assert proc.returncode == 0, str(root)
         assert records and len({(r["session_id"], r["prompt_id"]) for r in records}) == 1, str(root)
         coordinator = [r for r in records if r["cooperation"]["role"] == "coordinator"]
-        expected_tiers = {"lookup": ["low", "low"], "document": ["high", "low", "low"], "code": ["high", "high", "low"], "needs-design": ["high", "high"]}
+        if case == "batch":
+            assert all(state.get(key) for key in ("probe_read", "parent_denied", "worker_read")), (str(root), state)
+        expected_tiers = {"batch": ["high", "high", "high", "low"], "lookup": ["low", "low"], "document": ["high", "low", "low"], "code": ["high", "high", "low"], "needs-design": ["high", "high"]}
         assert [r["actual_tier"] for r in coordinator] == expected_tiers[case], (str(root), [(r["cooperation"], r["decision"]["reasons"]) for r in coordinator])
         assert all(r["actual_tier"] == ("low" if r["cooperation"]["role"] == "executor" else "high") for r in records if r["cooperation"]["role"] != "coordinator"), str(root)
         assert all(r["complete"] and r["kind"] == "inference" for r in records), str(root)
         executor = next(r for r in runs if r["role"] == "executor")
-        assert executor["status"] == {"needs-design":"needs_design","document":"needs_parent_write","code":"completed","lookup":"completed"}[case], str(root)
+        assert executor["status"] == {"needs-design":"needs_design","document":"needs_parent_write","code":"completed","lookup":"completed","batch":"completed"}[case], str(root)
         if case != "needs-design":
             if case == "code":
                 assert next(r for r in runs if r["role"] == "reviewer")["status"] == "passed", str(root)
@@ -174,5 +192,5 @@ def run_case(case):
 if __name__ == "__main__":
     if not shutil.which("claude") or not (REPO / "bin/router").exists():
         raise SystemExit("Install Claude Code and build bin/router first")
-    for case_name in ("lookup", "document", "code", "needs-design"):
+    for case_name in ("lookup", "document", "code", "needs-design", "batch"):
         run_case(case_name)

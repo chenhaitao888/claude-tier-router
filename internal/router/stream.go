@@ -18,6 +18,7 @@ type observer struct {
 	StreamError bool
 	Model       string
 	StopReason  string
+	observeTool func(id, name string)
 }
 
 func (o *observer) Feed(p []byte) {
@@ -65,7 +66,12 @@ func (o *observer) parseLine(line []byte) {
 }
 func (o *observer) event(b []byte) {
 	var ev struct {
-		Type  string          `json:"type"`
+		Type  string `json:"type"`
+		Block struct {
+			Type string `json:"type"`
+			ID   string `json:"id"`
+			Name string `json:"name"`
+		} `json:"content_block"`
 		Usage json.RawMessage `json:"usage"`
 		Delta struct {
 			StopReason *string `json:"stop_reason"`
@@ -85,6 +91,10 @@ func (o *observer) event(b []byte) {
 		o.Model = ev.Message.Model
 		if o.Usage.Merge(ev.Message.Usage) != nil {
 			o.Invalid = true
+		}
+	case "content_block_start":
+		if o.observeTool != nil && ev.Block.Type == "tool_use" {
+			o.observeTool(ev.Block.ID, ev.Block.Name)
 		}
 	case "message_delta":
 		o.Delta = true

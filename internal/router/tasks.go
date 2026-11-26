@@ -79,6 +79,8 @@ func (s *Store) SaveTaskLabel(label TaskLabel, replace bool) error {
 
 type taskKey struct{ Session, Prompt string }
 type TaskSummary struct {
+	BatchChecks        []BatchCheck                 `json:"batch_checks,omitempty"`
+	ExecutorCallFailed bool                         `json:"executor_call_failed,omitempty"`
 	CooperationStages  map[string]*CooperationStage `json:"cooperation_stages,omitempty"`
 	CooperationRuns    []CooperationRun             `json:"cooperation_runs,omitempty"`
 	Session            string                       `json:"session_id"`
@@ -240,6 +242,9 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 		if g := groups[taskKey{run.Session, run.Prompt}]; g != nil {
 			g.CooperationRuns = append(g.CooperationRuns, run)
 		}
+	}
+	if err = s.addDelegationChecks(groups); err != nil {
+		return result, err
 	}
 	labels, err := s.db.Query("SELECT payload FROM task_labels")
 	if err != nil {

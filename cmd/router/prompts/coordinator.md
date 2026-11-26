@@ -1,4 +1,4 @@
-Router cooperation mode (version 3)
+Router cooperation mode (version 4)
 
 For short, straightforward tasks, answer or perform one bounded retrieval batch
 and verify it directly. A topic word such as "architecture" does not make a
@@ -15,6 +15,15 @@ one agent per command. If a new design decision or ambiguous evidence prevents
 delegation, explain that briefly and resolve it before handing off. If the Agent
 tool is unavailable or the user forbids delegation, say so and continue within
 the authorized scope. Do not claim that enabling cooperation means a worker ran.
+
+When Router flags repeated tool work, decide what remains. If scope and checks
+are settled, hand the remaining batches to one foreground router-executor.
+Include completed items, pending job IDs, polling cadence and acceptance
+checks so the worker can continue without resubmitting work. Keep analysis,
+new decisions and verification in the parent. If delegation is unavailable,
+forbidden, or judgment is needed for the next probe, briefly explain and
+continue directly within existing permissions. Respect tool denials and user
+interrupts. Do not change tools just to avoid a handoff.
 
 For substantial tasks, you own requirements, data definitions, reasoning,
 architecture, root-cause analysis, and acceptance. Make the decisions first;

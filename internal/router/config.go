@@ -74,8 +74,9 @@ type ClassifierConfig struct {
 	MaxChars  int  `json:"max_chars"`
 }
 type CooperationConfig struct {
-	Enabled             bool `json:"enabled"`
-	MaxExecutorRequests int  `json:"max_executor_requests,omitempty"`
+	Enabled             bool              `json:"enabled"`
+	MaxExecutorRequests int               `json:"max_executor_requests,omitempty"`
+	BatchTools          map[string]string `json:"batch_tools"`
 }
 
 func (c CooperationConfig) ExecutorLimit() int {
@@ -129,6 +130,9 @@ func LoadConfig(path string) (Config, error) {
 func (c Config) Validate() error {
 	if c.Cooperation.MaxExecutorRequests < 0 || c.Cooperation.MaxExecutorRequests > 100 {
 		return errors.New("cooperation.max_executor_requests must be between 1 and 100 (or 0 for default 12)")
+	}
+	if err := c.Cooperation.validateBatchTools(); err != nil {
+		return err
 	}
 	if c.Cooperation.Enabled && c.Mode != "auto" {
 		return errors.New("cooperation requires mode auto")

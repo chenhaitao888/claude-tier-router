@@ -68,6 +68,8 @@ func (g *Gateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case r.Method == "POST" && r.URL.Path == "/api/cooperation/events":
 		g.cooperationEvent(w, r)
+	case r.Method == "POST" && r.URL.Path == DelegationHookPath:
+		g.delegationHook(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/messages":
 		g.messages(w, r)
 	case r.Method == "POST" && r.URL.Path == "/v1/messages/count_tokens":
@@ -215,6 +217,10 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 		return
 	}
 	if req.CooperationRole == "coordinator" {
+		if len(g.Config.Cooperation.batchTools()) != 0 {
+			available := hasAgentTool(req.Fields["tools"])
+			rec.Cooperation.AgentToolAvailable = &available
+		}
 		if err = g.Store.coordinatorFollowup(&req, &rec); err != nil {
 			errorJSON(w, 503, "cooperation ledger unavailable")
 			return
@@ -316,6 +322,16 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	stream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	var obs observer
+	if resp.StatusCode == http.StatusOK && rec.Cooperation != nil && rec.Cooperation.AgentToolAvailable != nil && rec.Prompt != "" && rec.Session != "" {
+		obs.observeTool = func(call, tool string) {
+			if g.Config.Cooperation.batchMode(tool) == "" && tool != "Agent" && tool != "Task" {
+				return
+			}
+			if err := g.Store.bindDelegationTool(rec, call, tool); err != nil {
+				g.logError("could not bind delegation tool call to its prompt")
+			}
+		}
+	}
 	var capture bytes.Buffer
 	captureOverflow := false
 	buf := make([]byte, 16<<10)
@@ -370,8 +386,20 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 			Model      string          `json:"model"`
 			Usage      json.RawMessage `json:"usage"`
 			StopReason *string         `json:"stop_reason"`
+			Content    []struct {
+				Type string `json:"type"`
+				ID   string `json:"id"`
+				Name string `json:"name"`
+			} `json:"content"`
 		}
 		if json.Unmarshal(capture.Bytes(), &msg) == nil {
+			if obs.observeTool != nil {
+				for _, block := range msg.Content {
+					if block.Type == "tool_use" {
+						obs.observeTool(block.ID, block.Name)
+					}
+				}
+			}
 			if msg.StopReason != nil {
 				rec.StopReason = *msg.StopReason
 			}
