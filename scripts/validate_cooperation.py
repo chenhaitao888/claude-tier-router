@@ -23,7 +23,7 @@ def run_case(case):
     root = pathlib.Path(tempfile.mkdtemp(prefix="router-cooperation-" + case + "-"))
     work = root / "work"
     work.mkdir()
-    if case == "batch":
+    if case in ("batch", "batch-low"):
         (work / "first.txt").write_text("first-probe-evidence")
         (work / "second.txt").write_text("worker-only-evidence")
     elif case == "lookup":
@@ -92,11 +92,22 @@ def run_case(case):
             else:
                 state["main"] += 1
                 n = state["main"]
-                if case == "batch" and n in (1, 2):
+                if case in ("batch", "batch-low") and n in (1, 2):
                     if n == 2:
                         state["probe_read"] = "first-probe-evidence" in json.dumps(body["messages"][-1])
                     filename = "first.txt" if n == 1 else "second.txt"
                     content, stop = tool("Read", {"file_path": str(work / filename)})
+                elif case == "batch-low":
+                    # Claude may append the hook context as its own system message.
+                    state["parent_read"] = any(
+                        isinstance(block, dict) and block.get("type") == "tool_result"
+                        and block.get("tool_use_id") == "fixture_tool_2" and not block.get("is_error")
+                        and "worker-only-evidence" in json.dumps(block.get("content"))
+                        for msg in body["messages"] if isinstance(msg["content"], list)
+                        for block in msg["content"]
+                    )
+                    state["hint_seen"] = "Continue mechanical batches" in json.dumps(body["messages"])
+                    content, stop = text("Both files read under the agreed plan.")
                 elif n == 1 or (case == "batch" and n == 3):
                     if case == "batch":
                         last = json.dumps(body["messages"][-1])
@@ -138,14 +149,14 @@ def run_case(case):
     for key in ("high", "low"):
         config[key].update(base_url="http://127.0.0.1:" + str(server.server_port), model="fixture-" + key, api_key="fixture-local", context_tokens=1000000, prices=None)
     config["policy"]["allow_text_switch"] = True
-    if case == "batch":
+    if case in ("batch", "batch-low"):
         config.setdefault("cooperation", {})["batch_tools"] = {"Read": "handoff"}
     path = root / "router.json"
     path.write_text(json.dumps(config))
     path.chmod(0o600)
     env = {k: os.environ[k] for k in ("PATH", "HOME", "USER", "SHELL", "TMPDIR") if k in os.environ}
     env.update(CLAUDE_CONFIG_DIR=str(cc), CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC="1", DISABLE_AUTOUPDATER="1", DISABLE_TELEMETRY="1", API_TIMEOUT_MS="10000", CLAUDE_CODE_MAX_RETRIES="0")
-    question = "List the existing architecture table names." if case == "lookup" else "Analyze the architecture fixture and delegate its bounded execution and review."
+    question = "List the existing architecture table names." if case in ("lookup", "batch-low") else "Analyze the architecture fixture and delegate its bounded execution and review."
     args = [str(REPO / "bin/router"), "claude", "-config", str(path), "-cooperate", "--", "-p", question, "--tools", "Agent,Read,Write,Edit,Bash", "--allowedTools", "Agent,Read,Write,Edit,Bash(go test*)", "--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--output-format", "stream-json", "--verbose", "--debug-file", str(root / "debug.log")]
     proc = None
     try:
@@ -166,10 +177,17 @@ def run_case(case):
         coordinator = [r for r in records if r["cooperation"]["role"] == "coordinator"]
         if case == "batch":
             assert all(state.get(key) for key in ("probe_read", "parent_denied", "worker_read")), (str(root), state)
-        expected_tiers = {"batch": ["high", "high", "high", "low"], "lookup": ["low", "low"], "document": ["high", "low", "low"], "code": ["high", "high", "low"], "needs-design": ["high", "high"]}
+        expected_tiers = {"batch-low": ["low", "low", "low"], "batch": ["high", "high", "high", "low"], "lookup": ["low", "low"], "document": ["high", "low", "low"], "code": ["high", "high", "low"], "needs-design": ["high", "high"]}
         assert [r["actual_tier"] for r in coordinator] == expected_tiers[case], (str(root), [(r["cooperation"], r["decision"]["reasons"]) for r in coordinator])
         assert all(r["actual_tier"] == ("low" if r["cooperation"]["role"] == "executor" else "high") for r in records if r["cooperation"]["role"] != "coordinator"), str(root)
         assert all(r["complete"] and r["kind"] == "inference" for r in records), str(root)
+        if case == "batch-low":
+            with sqlite3.connect(root / "router.db") as db:
+                signals = db.execute("SELECT tool,state FROM cooperation_low_batches").fetchall()
+            assert not runs and signals == [("Read", "review_hint")], (str(root), runs, signals)
+            assert state.get("probe_read") and state.get("parent_read") and state.get("hint_seen"), (str(root), state)
+            print(json.dumps({"case": case, "passed": True, "model_calls": len(records), "reviewer_calls": 0}), flush=True)
+            return
         executor = next(r for r in runs if r["role"] == "executor")
         assert executor["status"] == {"needs-design":"needs_design","document":"needs_parent_write","code":"completed","lookup":"completed","batch":"completed"}[case], str(root)
         if case != "needs-design":
@@ -192,5 +210,5 @@ def run_case(case):
 if __name__ == "__main__":
     if not shutil.which("claude") or not (REPO / "bin/router").exists():
         raise SystemExit("Install Claude Code and build bin/router first")
-    for case_name in ("lookup", "document", "code", "needs-design", "batch"):
+    for case_name in ("lookup", "document", "code", "needs-design", "batch", "batch-low"):
         run_case(case_name)

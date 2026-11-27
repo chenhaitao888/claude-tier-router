@@ -56,20 +56,20 @@ const amounts=values=>Object.entries(values||{}).sort(([a],[b])=>a.localeCompare
 let summaryData=null;let rubrics=[];let taskData={tasks:[],total_tasks:0,unattributed_requests:0};let selectedTask=null;let requestFilter=null;let feedbackBusy=false;let titleTask=null;let infoData={};const reviewDrafts=new Map();const taskCache=new Map();
 const paging={tasks:{page:1,page_size:20,total:0,total_pages:1},records:{page:1,page_size:20,total:0,total_pages:1}};
 let tasksLoad=0,recordsLoad=0,healthLoad=0;let cooperationTask=null;
-const stageNames={coordination:'设计 / 分析 / 统筹',execution:'按方案执行',review:'独立验收',direct:'简单任务直办',delivery:'委派后收尾',routing:'路由分类'};
+const stageNames={coordination:'设计 / 分析 / 统筹',execution:'按方案执行',review:'独立验收',direct:'低档主会话直办',delivery:'委派后收尾',routing:'路由分类'};
 const delegationLabel=r=>r.cooperation?.delegation_observed===true?'已观察到委派':r.cooperation?.delegation_observed===false?'本次请求前未观察到委派':'';
 const cooperationOutcomes={running:'执行中 / 尚未回报',completed:'执行完成（模型自报）',needs_design:'交回设计',needs_parent_write:'正文已生成，交由主会话写入',blocked:'受阻',passed:'复核通过（模型报告）',changes_required:'要求修改',unstructured:'未识别结构化结果'};
 const followupLabels={judgment:'后续仍需分析或验收',running:'仍有子代理运行中',needs_design:'执行方交回待决事项',changes_required:'验收要求修改',blocked:'子任务受阻',unstructured:'子任务回报无法识别',unresolved_report:'回报缺少检查或仍有待解决事项',missing_report:'缺少子任务状态',unexpected_result:'回报与预定收尾步骤不符',unconfirmed_step:'本轮没有匹配的交接计划',tool_error:'本轮工具执行失败',content_capability:'本轮内容需要高级档能力'};
 function delegationCheckText(task){
- const states={probe:'已观察到首批工具调用',suggest:'已提示委派，工具可继续执行',handoff:'已暂停同一模型回复中的新批次并提示委派',no_agent:'未提供 Agent 工具，主会话可继续'};
- const checks=(task.batch_checks||[]).map(c=>c.tool+' · '+(states[c.state]||c.state)+(c.continued?' · 后续已观察到主会话再次调用':''));
+ const states={probe:'已观察到首批工具调用',suggest:'已提示委派，工具可继续执行',handoff:'已暂停同一模型回复中的新批次并提示委派',review_hint:'已提醒仅在口径或证据存疑时复核，工具可继续执行',no_agent:'未提供 Agent 工具，主会话可继续'};
+ const checks=(task.batch_checks||[]).map(c=>(c.tier==='low'?'低档':'高级档')+' · '+c.tool+' · '+(states[c.state]||c.state)+(c.continued?' · 后续已观察到主会话再次调用':''));
  if(task.executor_call_failed)checks.push('本问题观察到执行子代理调用失败');
  return checks.length?' '+checks.join('。')+'。':'';
 }
 function renderCooperation(){
  const current=cooperationTask?(taskCache.get(taskKey(cooperationTask))||cooperationTask):null;
  const stages=current?.cooperation_stages||(!current?summaryData?.cooperation?.stages:{} )||{};
- $('cooperation-scope').textContent=current?'当前问题：'+taskName(current)+' · 会话 '+current.session_id.slice(0,8)+' · 总耗时 '+(current.elapsed_ms/1000).toFixed(1)+'s':'全部历史 · 按阶段统计';
+ $('cooperation-scope').textContent=current?'当前问题：'+taskName(current)+' · 会话 '+current.session_id.slice(0,8)+(current.continuation_count?' · 合并 '+current.continuation_count+' 次后台续跑':'')+' · 总耗时 '+(current.elapsed_ms/1000).toFixed(1)+'s':'全部历史 · 按阶段统计';
  $('cooperation-all').hidden=!current;$('cooperation-stages').replaceChildren();$('cooperation-agents').replaceChildren();
  for(const key of ['coordination','direct','execution','review','delivery','routing']){const s=stages[key];if(!s)continue;const u=s.usage;const tr=document.createElement('tr');cell(tr,stageNames[key]);cell(tr,u.high.requests+' / '+u.low.requests+(s.undispatched_requests?'；未派发 '+s.undispatched_requests:''));cell(tr,pct(u.low.request_share)+' / '+pct(u.low.token_share));cell(tr,u.total_tokens.toLocaleString()+' / '+u.token_requests+' 次完整，'+u.missing_token_requests+' 次不完整');cell(tr,(amounts(s.costs)||'暂无已核算费用')+(s.unknown_cost_requests?'；'+s.unknown_cost_requests+' 次费用未知':''),'why');cell(tr,(s.request_duration_ms/1000).toFixed(2)+'s');$('cooperation-stages').append(tr)}
  if(current){
@@ -78,7 +78,7 @@ function renderCooperation(){
  }else{const s=summaryData?.cooperation;const count=Object.keys(stages).length;$('cooperation-summary').textContent=count?'执行子代理 '+s.execution_agents+' 个 · 验收子代理 '+s.review_agents+' 个 · 交回设计 '+s.needs_design_reports+' 次 · 要求修改 '+s.changes_required_reports+' 次 · 观测到继续执行 '+s.observed_resumes+' 次。点击问题行的“协作详情”查看各子任务。':'尚无协作记录。使用 router claude -cooperate 启动；普通自动路由仍可照常使用。'}
 }
 $('cooperation-all').onclick=()=>{cooperationTask=null;renderCooperation()};
-const taskKey=t=>JSON.stringify([t.session_id,t.prompt_id]);
+const taskKey=t=>JSON.stringify([t.session_id,t.root_prompt_id||t.prompt_id]);
 const taskName=t=>t?.label?.title?(t.label.title+(t.label.truncated?'…':'')):'历史问题（未记录摘要）';
 const outcomeLabel=value=>({passed:'通过',failed:'失败',unknown:'未确定'})[value]||'未评价';
 const taskTime=t=>new Date(t.started_at).toLocaleString();
@@ -104,7 +104,7 @@ function renderTasks(){
  $('task-unattributed').textContent='另有 '+taskData.unattributed_requests+' 次后台或未关联请求，不作为可评价问题。问题费用包含已关联的后台与分类调用；未知费用和历史估算单独标注。';
  const states={response_finished:'回答已结束',transport_complete:'传输完整',awaiting_followup:'等待后续请求',in_progress:'请求进行中',interrupted:'请求中断或失败',output_limited:'达到输出上限'};
  for(const t of taskData.tasks){
-  const tr=document.createElement('tr');tr.dataset.taskKey=taskKey(t);const title=cell(tr,'','task-question');const name=document.createElement('strong');name.className='task-title';name.textContent=taskName(t);const date=document.createElement('span');date.className='task-sub';date.textContent=taskTime(t)+(t.label?.truncated?' · 摘要前 80 字':'');title.append(name,date);
+  const tr=document.createElement('tr');tr.dataset.taskKey=taskKey(t);const title=cell(tr,'','task-question');const name=document.createElement('strong');name.className='task-title';name.textContent=taskName(t);const date=document.createElement('span');date.className='task-sub';date.textContent=taskTime(t)+(t.continuation_count?' · 后台续跑 '+t.continuation_count+' 次':'')+(t.label?.truncated?' · 摘要前 80 字':'');title.append(name,date);
   const session=cell(tr,t.session_id.slice(0,8));session.title='完整会话 ID：'+t.session_id+'；提问 ID：'+t.prompt_id;
   cell(tr,'Opus '+t.high_requests+' / Flash '+t.low_requests+' 次'+(t.classifier_requests?' · 分类 '+t.classifier_requests+' 次':''));
   let cost=amounts(t.costs)||'暂无已核算费用';if(Object.keys(t.retrospective_estimated_costs||{}).length)cost+='；历史估算 '+amounts(t.retrospective_estimated_costs);if(t.unknown_cost_requests)cost+='；'+t.unknown_cost_requests+' 条费用未知';cell(tr,cost,'why');
@@ -120,7 +120,7 @@ function renderRecords(records){
  $('rows').replaceChildren();$('empty').hidden=records.length>0;
  $('request-filter-label').textContent=requestFilter?'当前问题：'+taskName(requestFilter)+' · 会话 '+requestFilter.session_id.slice(0,8)+' · 共 '+paging.records.total+' 条':'全部请求 · 共 '+paging.records.total+' 条 · 每条明细仅供排查';$('clear-request-filter').hidden=!requestFilter;
  for(const r of records){
-  const tr=document.createElement('tr');const kind=r.kind==='classifier'?'路由分类器':({main:'主请求',subagent:'子代理',auxiliary:'后台辅助',compaction:'上下文压缩'}[r.request_class]||r.request_class||'类别未记录');cell(tr,new Date(r.started_at).toLocaleTimeString()+' / '+kind);const t=r.task_label?{label:r.task_label}:taskFor(r);cell(tr,r.prompt_id?(t?taskName(t):'未命名问题 '+r.prompt_id.slice(0,12)):'未关联问题（无问题 ID）','why');
+  const tr=document.createElement('tr');const kind=r.kind==='classifier'?'路由分类器':({main:'主请求',subagent:'子代理',auxiliary:'后台辅助',compaction:'上下文压缩'}[r.request_class]||r.request_class||'类别未记录');cell(tr,new Date(r.started_at).toLocaleTimeString()+' / '+kind);const t=r.task_label?{label:r.task_label}:taskFor(r);cell(tr,r.prompt_id?(t?taskName(t):'未命名问题 '+(r.root_prompt_id||r.prompt_id).slice(0,12)):'未关联问题（无问题 ID）','why');
   const td=cell(tr,r.kind==='classifier'?'分类器实际执行：':'推荐 '+tier(r.decision.recommended)+'；实际 ');const badge=document.createElement('span');badge.className='tier '+(r.actual_tier==='low'?'low':'');badge.textContent=tier(r.actual_tier);td.append(badge);
   cell(tr,(r.cooperation?(stageNames[r.cooperation.stage]||r.cooperation.stage)+' · ':'')+(delegationLabel(r)?delegationLabel(r)+' · ':'')+(followupLabels[r.cooperation?.followup]?followupLabels[r.cooperation.followup]+' · ':'')+(r.decision.reasons||[]).map(x=>cooperationReasons[x]||reasons[x]||x).join(' · '),'why');const estimate=r.retrospective_estimate;const cost=cell(tr,r.cost_amount!=null?money(r.cost_amount,r.cost_currency):r.cost_usd!=null?money(r.cost_usd):estimate?money(estimate.amount,estimate.currency)+' · 历史估算':'未知');cost.title=r.cost_status;
   cell(tr,(r.duration_ms/1000).toFixed(2)+'s');cell(tr,(cooperationReasons[r.error]||reasons[r.error]||r.error)||(r.stop_reason==='max_tokens'?'达到输出上限':r.stop_reason==='model_context_window_exceeded'?'达到上下文上限':r.complete?'传输完整':'进行中'));

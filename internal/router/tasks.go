@@ -1,6 +1,7 @@
 package router
 
 import (
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"sort"
@@ -11,10 +12,15 @@ import (
 
 const TaskSummaryChars = 80
 
-func (s *Store) taskExists(session, prompt string) (bool, error) {
-	var n int
-	err := s.db.QueryRow("SELECT count(*) FROM records WHERE session=? AND prompt=? AND kind='inference' AND COALESCE(json_extract(payload,'$.request_class'),'main') NOT IN ('auxiliary','compaction')", session, prompt).Scan(&n)
-	return n > 0, err
+// A continuation is immutable once its first main request is recorded.
+func (s *Store) existingTaskPrompt(session, prompt string) (string, error) {
+	var root string
+	err := s.db.QueryRow(`SELECT root_prompt FROM task_record_roots WHERE session=? AND prompt=? AND kind='inference'
+		AND COALESCE(json_extract(payload,'$.request_class'),'main') NOT IN ('auxiliary','compaction') LIMIT 1`, session, prompt).Scan(&root)
+	if errors.Is(err, sql.ErrNoRows) {
+		return "", errors.New("task not found")
+	}
+	return root, err
 }
 
 type TaskLabel struct {
@@ -57,13 +63,14 @@ func (s *Store) SaveTaskLabel(label TaskLabel, replace bool) error {
 	if label.Title == "" {
 		return errors.New("task title is empty")
 	}
-	exists, err := s.taskExists(label.Session, label.Prompt)
+	root, err := s.existingTaskPrompt(label.Session, label.Prompt)
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return errors.New("task not found")
+	if label.Source == "request" && root != label.Prompt {
+		return nil // A background run cannot supply its parent's title.
 	}
+	label.Prompt = root
 	label.Updated = time.Now().UTC()
 	raw, err := json.Marshal(label)
 	if err != nil {
@@ -79,6 +86,7 @@ func (s *Store) SaveTaskLabel(label TaskLabel, replace bool) error {
 
 type taskKey struct{ Session, Prompt string }
 type TaskSummary struct {
+	ContinuationCount  int                          `json:"continuation_count,omitempty"`
 	BatchChecks        []BatchCheck                 `json:"batch_checks,omitempty"`
 	ExecutorCallFailed bool                         `json:"executor_call_failed,omitempty"`
 	CooperationStages  map[string]*CooperationStage `json:"cooperation_stages,omitempty"`
@@ -146,14 +154,16 @@ func (s *Store) Tasks(c Config, limit int) (TaskList, error) {
 
 func (s *Store) allTasks(c Config) (TaskList, error) {
 	result := TaskList{Tasks: []TaskSummary{}}
-	rows, err := s.db.Query("SELECT payload FROM records ORDER BY started ASC, id ASC")
+	continuations := taskContinuations{}
+	rows, err := s.db.Query(`SELECT payload,root_prompt FROM task_record_roots ORDER BY started ASC,id ASC`)
 	if err != nil {
 		return result, err
 	}
 	groups := map[taskKey]*TaskSummary{}
+
 	for rows.Next() {
-		var raw string
-		if err = rows.Scan(&raw); err != nil {
+		var raw, root string
+		if err = rows.Scan(&raw, &root); err != nil {
 			break
 		}
 		var r Record
@@ -169,10 +179,12 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 			}
 			continue
 		}
-		key := taskKey{r.Session, r.Prompt}
+		requestKey := taskKey{r.Session, r.Prompt}
+		key := taskKey{r.Session, root}
+
 		g := groups[key]
 		if g == nil {
-			g = &TaskSummary{Session: r.Session, Prompt: r.Prompt, Started: r.Started, Costs: map[string]float64{}, EstimatedCosts: map[string]float64{}, latestPriority: -1}
+			g = &TaskSummary{Session: key.Session, Prompt: key.Prompt, Started: r.Started, Costs: map[string]float64{}, EstimatedCosts: map[string]float64{}, latestPriority: -1}
 			g.CooperationStages = map[string]*CooperationStage{}
 			groups[key] = g
 		}
@@ -196,6 +208,10 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 		if r.Kind == "classifier" {
 			g.ClassifierRequests++
 			continue
+		}
+		if requestKey != key && continuations[requestKey] == "" {
+			g.ContinuationCount++
+			continuations[requestKey] = root
 		}
 		g.Requests++
 		isMain := r.Class != "auxiliary" && r.Class != "compaction"
@@ -239,11 +255,11 @@ func (s *Store) allTasks(c Config) (TaskList, error) {
 		return result, err
 	}
 	for _, run := range runs {
-		if g := groups[taskKey{run.Session, run.Prompt}]; g != nil {
+		if g := groups[continuations.root(taskKey{run.Session, run.Prompt})]; g != nil {
 			g.CooperationRuns = append(g.CooperationRuns, run)
 		}
 	}
-	if err = s.addDelegationChecks(groups); err != nil {
+	if err = s.addDelegationChecks(groups, continuations); err != nil {
 		return result, err
 	}
 	labels, err := s.db.Query("SELECT payload FROM task_labels")
@@ -314,7 +330,7 @@ func (s *Store) TaskRecords(session, prompt string, limit int) ([]Record, error)
 	if limit < 1 || limit > 1000 {
 		limit = 500
 	}
-	rows, err := s.db.Query("SELECT payload FROM records WHERE session=? AND prompt=? ORDER BY started ASC, id ASC LIMIT ?", session, prompt, limit)
+	rows, err := s.db.Query(`SELECT payload FROM task_record_roots WHERE session=?1 AND root_prompt=`+resolvedPromptSQL+` ORDER BY started ASC,id ASC LIMIT ?3`, session, prompt, limit)
 	if err != nil {
 		return nil, err
 	}

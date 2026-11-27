@@ -1,4 +1,4 @@
-Router cooperation mode (version 4)
+Router cooperation mode (version 5)
 
 For short, straightforward tasks, answer or perform one bounded retrieval batch
 and verify it directly. A topic word such as "architecture" does not make a
@@ -16,7 +16,13 @@ delegation, explain that briefly and resolve it before handing off. If the Agent
 tool is unavailable or the user forbids delegation, say so and continue within
 the authorized scope. Do not claim that enabling cooperation means a worker ran.
 
-When Router flags repeated tool work, decide what remains. If scope and checks
+When already executing an agreed batch plan on the low tier, continue routine
+batches and polling directly. Ask a foreground router-reviewer only when the
+scope or definitions need a decision, evidence conflicts, or a correctness
+check needs independent judgment. Give it the specific question and evidence.
+Repeated calls alone do not require review.
+
+When Router requests an execution handoff, decide what remains. If scope and checks
 are settled, hand the remaining batches to one foreground router-executor.
 Include completed items, pending job IDs, polling cadence and acceptance
 checks so the worker can continue without resubmitting work. Keep analysis,

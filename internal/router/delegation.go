@@ -86,6 +86,7 @@ type batchEvent struct {
 }
 
 type BatchCheck struct {
+	Tier      string `json:"tier"`
 	Tool      string `json:"tool"`
 	State     string `json:"state"`
 	Continued bool   `json:"continued,omitempty"`
@@ -174,6 +175,9 @@ func (g *Gateway) delegationHook(w http.ResponseWriter, r *http.Request) {
 	switch decision {
 	case "handoff":
 		reply["hookSpecificOutput"] = map[string]string{"hookEventName": "PreToolUse", "permissionDecision": "deny", "permissionDecisionReason": hint}
+	case "review_hint":
+		review := "Continue mechanical batches under the agreed plan. Only if definitions or scope change, evidence conflicts, or correctness requires independent judgment, ask a foreground router-reviewer to check the specific uncertainty with the original criteria and evidence."
+		reply["hookSpecificOutput"] = map[string]string{"hookEventName": "PreToolUse", "additionalContext": review}
 	case "suggest":
 		reply["hookSpecificOutput"] = map[string]string{"hookEventName": "PreToolUse", "additionalContext": hint}
 	}
@@ -196,37 +200,48 @@ func (s *Store) checkBatch(e batchEvent, digest, mode string) (string, error) {
 	}
 	var request, prompt, outcome, tier string
 	var agentAvailable bool
-	err = tx.QueryRow(`SELECT r.id,r.prompt,c.outcome,json_extract(r.payload,'$.actual_tier'),json_extract(r.payload,'$.cooperation.agent_tool_available')
+	err = tx.QueryRow(`SELECT r.id,COALESCE(a.root,r.prompt),c.outcome,json_extract(r.payload,'$.actual_tier'),json_extract(r.payload,'$.cooperation.agent_tool_available')
 		FROM cooperation_batch_calls c JOIN records r ON r.id=c.request
-		WHERE c.session=? AND c.call=? AND c.tool=? AND (?='' OR r.prompt=?)`,
+		LEFT JOIN task_continuations a ON a.session=r.session AND a.prompt=r.prompt
+		WHERE c.session=? AND c.call=? AND c.tool=? AND (?='' OR r.prompt=?)
+		AND json_type(r.payload,'$.cooperation.agent_tool_available') IN ('true','false')`,
 		e.Session, e.Call, e.Tool, e.Prompt, e.Prompt).Scan(&request, &prompt, &outcome, &tier, &agentAvailable)
 	if errors.Is(err, sql.ErrNoRows) {
 		return "", nil
 	}
-	if err != nil || outcome != "" || tier != "high" {
+	if err != nil || outcome != "" {
 		return outcome, err
+	}
+	// Independent tier ledgers keep a low-tier hint from consuming the
+	// high-tier handoff if the task subsequently needs the coordinator.
+	table := "cooperation_batches"
+	if tier == "low" && mode == "handoff" {
+		table = "cooperation_low_batches"
+		mode = "review_hint"
+	} else if tier != "high" {
+		return "", nil
 	}
 
 	var first, signal, state string
-	err = tx.QueryRow(`SELECT first_digest,signal_request,state FROM cooperation_batches
+	err = tx.QueryRow(`SELECT first_digest,signal_request,state FROM `+table+`
 		WHERE session=? AND prompt=? AND tool=?`, e.Session, prompt, e.Tool).Scan(&first, &signal, &state)
 	outcome = "pass"
 	switch {
 	case errors.Is(err, sql.ErrNoRows):
-		_, err = tx.Exec(`INSERT INTO cooperation_batches(session,prompt,tool,first_digest) VALUES(?,?,?,?)`, e.Session, prompt, e.Tool, digest)
+		_, err = tx.Exec(`INSERT INTO `+table+`(session,prompt,tool,first_digest) VALUES(?,?,?,?)`, e.Session, prompt, e.Tool, digest)
 	case err != nil:
 		return "", err
 	case digest == first:
 		// Identical probe retries, including those with fresh tool call IDs.
 	case signal == "" && !agentAvailable:
-		_, err = tx.Exec(`UPDATE cooperation_batches SET state='no_agent' WHERE session=? AND prompt=? AND tool=?`, e.Session, prompt, e.Tool)
+		_, err = tx.Exec(`UPDATE `+table+` SET state='no_agent' WHERE session=? AND prompt=? AND tool=?`, e.Session, prompt, e.Tool)
 	case signal == "":
 		outcome = mode
-		_, err = tx.Exec(`UPDATE cooperation_batches SET signal_request=?,state=? WHERE session=? AND prompt=? AND tool=?`, request, mode, e.Session, prompt, e.Tool)
+		_, err = tx.Exec(`UPDATE `+table+` SET signal_request=?,state=? WHERE session=? AND prompt=? AND tool=?`, request, mode, e.Session, prompt, e.Tool)
 	case signal == request && state == "handoff":
-		outcome = "handoff"
+		outcome = state
 	case signal != request:
-		_, err = tx.Exec(`UPDATE cooperation_batches SET continued=1 WHERE session=? AND prompt=? AND tool=?`, e.Session, prompt, e.Tool)
+		_, err = tx.Exec(`UPDATE `+table+` SET continued=1 WHERE session=? AND prompt=? AND tool=?`, e.Session, prompt, e.Tool)
 	}
 	if err != nil {
 		return "", err
@@ -238,10 +253,11 @@ func (s *Store) checkBatch(e batchEvent, digest, mode string) (string, error) {
 	return outcome, tx.Commit()
 }
 
-func (s *Store) addDelegationChecks(groups map[taskKey]*TaskSummary) error {
-	rows, err := s.db.Query(`SELECT session,prompt,tool,state,continued FROM cooperation_batches
-		UNION ALL SELECT DISTINCT r.session,r.prompt,'','executor_failed',0 FROM cooperation_batch_calls c
-		JOIN records r ON r.id=c.request WHERE c.outcome='executor_failed' ORDER BY 1,2,3`)
+func (s *Store) addDelegationChecks(groups map[taskKey]*TaskSummary, continuations taskContinuations) error {
+	rows, err := s.db.Query(`SELECT session,prompt,tool,state,continued,'high' FROM cooperation_batches
+		UNION ALL SELECT session,prompt,tool,state,continued,'low' FROM cooperation_low_batches
+		UNION ALL SELECT DISTINCT r.session,r.prompt,'','executor_failed',0,'' FROM cooperation_batch_calls c
+		JOIN records r ON r.id=c.request WHERE c.outcome='executor_failed' ORDER BY 1,2,3,6`)
 	if err != nil {
 		return err
 	}
@@ -249,10 +265,10 @@ func (s *Store) addDelegationChecks(groups map[taskKey]*TaskSummary) error {
 	for rows.Next() {
 		var key taskKey
 		var check BatchCheck
-		if err := rows.Scan(&key.Session, &key.Prompt, &check.Tool, &check.State, &check.Continued); err != nil {
+		if err := rows.Scan(&key.Session, &key.Prompt, &check.Tool, &check.State, &check.Continued, &check.Tier); err != nil {
 			return err
 		}
-		if task := groups[key]; task != nil {
+		if task := groups[continuations.root(key)]; task != nil {
 			if check.State == "executor_failed" {
 				task.ExecutorCallFailed = true
 			} else {

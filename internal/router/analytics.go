@@ -231,14 +231,14 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 		Scopes:        map[string]*UsageScope{"all": {}, "main": {}, "background": {}, "classifier": {}},
 		RoutingHealth: newRoutingHealth(),
 	}
-	rows, err := s.db.Query("SELECT payload FROM records")
+	rows, err := s.db.Query("SELECT payload,root_prompt FROM task_record_roots")
 	if err != nil {
 		return out, err
 	}
-	tasks := map[string]bool{}
+	tasks := map[taskKey]bool{}
 	for rows.Next() {
-		var b string
-		if err = rows.Scan(&b); err != nil {
+		var b, root string
+		if err = rows.Scan(&b, &root); err != nil {
 			rows.Close()
 			return out, err
 		}
@@ -292,8 +292,8 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 		out.CacheRead += num(r.Usage.Read)
 		out.InputTotal += r.Usage.TotalInput()
 		out.OutputTotal += num(r.Usage.Output)
-		if r.Prompt != "" && r.Class != "auxiliary" && r.Class != "compaction" {
-			tasks[r.Session+"\x00"+r.Prompt] = true
+		if r.Kind == "inference" && r.Session != "" && root != "" && r.Class != "auxiliary" && r.Class != "compaction" {
+			tasks[taskKey{r.Session, root}] = true
 		}
 	}
 	err = rows.Err()
@@ -319,7 +319,7 @@ func (s *Store) Summary(configs ...Config) (Summary, error) {
 		return out, err
 	}
 	for _, f := range feedback {
-		if tasks[f.Session+"\x00"+f.Prompt] {
+		if tasks[taskKey{f.Session, f.Prompt}] {
 			if f.Rubric != "" {
 				out.EvidenceReviews++
 				switch f.Outcome {

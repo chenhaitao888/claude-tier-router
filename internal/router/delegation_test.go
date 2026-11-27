@@ -61,6 +61,9 @@ func batchHook(t *testing.T, g *Gateway, e batchEvent) string {
 	if resp.Output.Permission == "deny" && strings.Contains(resp.Output.Reason, ExecutorModel) {
 		return "handoff"
 	}
+	if resp.Output.Permission == "" && strings.Contains(resp.Output.Context, ReviewerModel) {
+		return "review_hint"
+	}
 	if resp.Output.Permission != "" {
 		t.Fatal("unexpected permission change", resp)
 	}
@@ -73,6 +76,17 @@ func batchHook(t *testing.T, g *Gateway, e batchEvent) string {
 // Feed a real gateway request backed by a synthetic model. The hook has to
 // identify the exact emitted call, whether the provider used SSE or JSON.
 func emitBatch(t *testing.T, g *Gateway, prompt, model, task string, agentTool, stream bool, calls ...batchEvent) {
+	t.Helper()
+	reqTools := ""
+	if agentTool {
+		reqTools = `,"tools":[{"name":"Agent","input_schema":{"type":"object"}}]`
+	}
+	r := request(fmt.Sprintf(`{"model":%q,"max_tokens":100,"messages":[{"role":"user","content":%q}]%s}`, model, task, reqTools))
+	r.Header.Set("x-claude-code-prompt-id", prompt)
+	emitBatchRequest(t, g, r, stream, calls...)
+}
+
+func emitBatchRequest(t *testing.T, g *Gateway, request *http.Request, stream bool, calls ...batchEvent) {
 	t.Helper()
 	var blocks []map[string]string
 	for _, c := range calls {
@@ -93,13 +107,7 @@ func emitBatch(t *testing.T, g *Gateway, prompt, model, task string, agentTool, 
 		}
 		return w.Result(), nil
 	})
-	reqTools := ""
-	if agentTool {
-		reqTools = `,"tools":[{"name":"Agent","input_schema":{"type":"object"}}]`
-	}
-	r := request(fmt.Sprintf(`{"model":%q,"max_tokens":100,"messages":[{"role":"user","content":%q}]%s}`, model, task, reqTools))
-	r.Header.Set("x-claude-code-prompt-id", prompt)
-	coopSend(t, g, r, 200)
+	coopSend(t, g, request, 200)
 }
 
 func TestBatchDelegationAcrossToolsAndHookRetries(t *testing.T) {
@@ -168,7 +176,7 @@ func TestBatchDelegationAcrossToolsAndHookRetries(t *testing.T) {
 				t.Fatal(tasks, err)
 			}
 			task := tasks.Tasks[0]
-			if len(task.BatchChecks) != 1 || task.BatchChecks[0] != (BatchCheck{tc.tool, tc.mode, true}) || !task.ExecutorCallFailed || len(task.CooperationRuns) != 0 {
+			if len(task.BatchChecks) != 1 || task.BatchChecks[0] != (BatchCheck{Tier: "high", Tool: tc.tool, State: tc.mode, Continued: true}) || !task.ExecutorCallFailed || len(task.CooperationRuns) != 0 {
 				t.Fatal(task)
 			}
 			var digest string

@@ -76,10 +76,16 @@ func OpenStore(path string) (*Store, error) {
  CREATE INDEX IF NOT EXISTS records_task ON records(session,prompt);
  CREATE TABLE IF NOT EXISTS cooperation_batches(session TEXT NOT NULL, prompt TEXT NOT NULL, tool TEXT NOT NULL, first_digest TEXT NOT NULL,
    signal_request TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'probe', continued INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(session,prompt,tool));
+ CREATE TABLE IF NOT EXISTS cooperation_low_batches(session TEXT NOT NULL, prompt TEXT NOT NULL, tool TEXT NOT NULL, first_digest TEXT NOT NULL,
+   signal_request TEXT NOT NULL DEFAULT '', state TEXT NOT NULL DEFAULT 'probe', continued INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(session,prompt,tool));
  CREATE TABLE IF NOT EXISTS cooperation_batch_calls(session TEXT NOT NULL, call TEXT NOT NULL, tool TEXT NOT NULL, request TEXT NOT NULL,
    outcome TEXT NOT NULL DEFAULT '', PRIMARY KEY(session,call,tool));
  CREATE INDEX IF NOT EXISTS batch_executor_failures ON cooperation_batch_calls(request) WHERE outcome='executor_failed';
- PRAGMA user_version=4;`)
+ CREATE TABLE IF NOT EXISTS task_continuations(session TEXT NOT NULL, prompt TEXT NOT NULL, root TEXT NOT NULL, PRIMARY KEY(session,prompt));
+ CREATE INDEX IF NOT EXISTS task_continuations_root ON task_continuations(session,root);
+ CREATE VIEW IF NOT EXISTS task_record_roots AS SELECT r.*,COALESCE(a.root,r.prompt) AS root_prompt
+   FROM records r LEFT JOIN task_continuations a ON a.session=r.session AND a.prompt=r.prompt;
+ PRAGMA user_version=5;`)
 	if err != nil {
 		db.Close()
 		return nil, err
@@ -92,13 +98,19 @@ func OpenStore(path string) (*Store, error) {
 }
 func (s *Store) Close() error { return s.db.Close() }
 func (s *Store) Save(r Record) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	return saveRecord(ctx, s.db, r)
+}
+
+func saveRecord(ctx context.Context, db interface {
+	ExecContext(context.Context, string, ...any) (sql.Result, error)
+}, r Record) error {
 	b, err := json.Marshal(r)
 	if err != nil {
 		return err
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-	_, err = s.db.ExecContext(ctx, "INSERT INTO records VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", r.ID, r.Started.UTC().Format(time.RFC3339Nano), r.Session, r.Prompt, r.Kind, string(b))
+	_, err = db.ExecContext(ctx, "INSERT INTO records VALUES(?,?,?,?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload", r.ID, r.Started.UTC().Format(time.RFC3339Nano), r.Session, r.Prompt, r.Kind, string(b))
 	return err
 }
 func (s *Store) Records(limit int) ([]Record, error) {
@@ -131,13 +143,11 @@ func (s *Store) Feedback(f Feedback) error {
 	if err := f.validateQuality(); err != nil {
 		return err
 	}
-	exists, err := s.taskExists(f.Session, f.Prompt)
+	root, err := s.existingTaskPrompt(f.Session, f.Prompt)
 	if err != nil {
 		return err
 	}
-	if !exists {
-		return errors.New("task not found")
-	}
+	f.Prompt = root
 	f.Source = "manual"
 	f.Updated = time.Now().UTC()
 	b, _ := json.Marshal(f)
@@ -145,22 +155,13 @@ func (s *Store) Feedback(f Feedback) error {
 	return err
 }
 func (s *Store) Feedbacks() ([]Feedback, error) {
-	rows, err := s.db.Query("SELECT payload FROM feedback")
+	views, err := s.FeedbackViews()
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
-	out := []Feedback{}
-	for rows.Next() {
-		var b string
-		if err = rows.Scan(&b); err != nil {
-			return nil, err
-		}
-		var f Feedback
-		if err = json.Unmarshal([]byte(b), &f); err != nil {
-			return nil, err
-		}
-		out = append(out, f)
+	out := make([]Feedback, 0, len(views))
+	for _, view := range views {
+		out = append(out, view.Feedback)
 	}
-	return out, rows.Err()
+	return out, nil
 }

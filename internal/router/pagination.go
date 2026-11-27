@@ -61,7 +61,8 @@ func (s *Store) TasksPage(c Config, p Pagination) (TaskPage, error) {
 
 type RecordView struct {
 	Record
-	TaskLabel *TaskLabel `json:"task_label,omitempty"`
+	RootPrompt string     `json:"root_prompt_id,omitempty"`
+	TaskLabel  *TaskLabel `json:"task_label,omitempty"`
 }
 type RecordPage struct {
 	Records []RecordView `json:"records"`
@@ -75,7 +76,13 @@ type FeedbackView struct {
 
 // Feedback history keeps readable names even when its task is on another page.
 func (s *Store) FeedbackViews() ([]FeedbackView, error) {
-	rows, err := s.db.Query("SELECT f.payload, l.payload FROM feedback f LEFT JOIN task_labels l ON f.session=l.session AND f.prompt=l.prompt")
+	rows, err := s.db.Query(`WITH entries AS (
+		SELECT f.*, COALESCE(a.root,f.prompt) AS root FROM feedback f
+		LEFT JOIN task_continuations a ON a.session=f.session AND a.prompt=f.prompt
+	), ranked AS (
+		SELECT *, ROW_NUMBER() OVER (PARTITION BY session,root ORDER BY
+			julianday(json_extract(payload,'$.updated_at')) DESC, (prompt=root) DESC,prompt) AS n FROM entries
+	) SELECT f.payload,f.root,l.payload FROM ranked f LEFT JOIN task_labels l ON f.session=l.session AND f.root=l.prompt WHERE f.n=1`)
 	if err != nil {
 		return nil, err
 	}
@@ -85,12 +92,14 @@ func (s *Store) FeedbackViews() ([]FeedbackView, error) {
 		var raw string
 		var label sql.NullString
 		var view FeedbackView
-		if err = rows.Scan(&raw, &label); err != nil {
+		var root string
+		if err = rows.Scan(&raw, &root, &label); err != nil {
 			return nil, err
 		}
 		if err = json.Unmarshal([]byte(raw), &view.Feedback); err != nil {
 			return nil, err
 		}
+		view.Prompt = root
 		if label.Valid {
 			if err = json.Unmarshal([]byte(label.String), &view.TaskLabel); err != nil {
 				return nil, err
@@ -109,20 +118,21 @@ func (s *Store) RecordsPage(ctx context.Context, c Config, p Pagination, session
 		return result, err
 	}
 	defer tx.Rollback()
+	from := " FROM task_record_roots r"
 	where, order := "", "r.started DESC, r.id DESC"
 	args := []any{}
 	if session != "" {
-		where, order = " WHERE r.session=? AND r.prompt=?", "r.started ASC, r.id ASC"
+		where, order = " WHERE r.session=?1 AND r.root_prompt="+resolvedPromptSQL, "r.started ASC, r.id ASC"
 		args = append(args, session, prompt)
 	}
 	var total int
-	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*) FROM records r"+where, args...).Scan(&total); err != nil {
+	if err = tx.QueryRowContext(ctx, "SELECT COUNT(*)"+from+where, args...).Scan(&total); err != nil {
 		return result, err
 	}
 	p.setTotal(total)
 	result.Pagination = p
 	args = append(args, p.PageSize, (p.Page-1)*p.PageSize)
-	rows, err := tx.QueryContext(ctx, "SELECT r.payload, l.payload FROM records r LEFT JOIN task_labels l ON r.session=l.session AND r.prompt=l.prompt"+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...)
+	rows, err := tx.QueryContext(ctx, "SELECT r.payload, r.root_prompt, l.payload"+from+" LEFT JOIN task_labels l ON r.session=l.session AND r.root_prompt=l.prompt"+where+" ORDER BY "+order+" LIMIT ? OFFSET ?", args...)
 	if err != nil {
 		return result, err
 	}
@@ -131,7 +141,7 @@ func (s *Store) RecordsPage(ctx context.Context, c Config, p Pagination, session
 		var raw string
 		var label sql.NullString
 		var view RecordView
-		if err = rows.Scan(&raw, &label); err != nil {
+		if err = rows.Scan(&raw, &view.RootPrompt, &label); err != nil {
 			return result, err
 		}
 		if err = json.Unmarshal([]byte(raw), &view.Record); err != nil {

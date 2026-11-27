@@ -7,7 +7,7 @@ import (
 	"unicode/utf8"
 )
 
-const RoutingVersion = "cooperation-followup-v3"
+const RoutingVersion = "continuation-batches-v1"
 
 type Decision struct {
 	RoutingVersion         string          `json:"routing_version,omitempty"`

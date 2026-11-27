@@ -16,6 +16,7 @@ type Request struct {
 	RequestClass         string
 	CooperationRole      string
 	CooperationDelegated bool
+	CurrentUserText      string
 	CooperationFollowup  string
 	Raw                  []byte
 	Fields               map[string]json.RawMessage
@@ -40,6 +41,7 @@ type Request struct {
 	CacheableTokens   int
 	TaskExtraction    string
 	ReminderBlocks    int
+	ContinuationCalls []string
 	ProtectionReasons []string
 	CacheShape        map[string]string
 	NonPromptBytes    int
@@ -70,7 +72,15 @@ func ParseRequest(raw []byte) (Request, error) {
 	// Estimate tokens conservatively; the provider's usage remains authoritative.
 	r.Tokens = len(raw)/2 + 1
 	var recent []string
-	for _, m := range r.Messages {
+	// Only the current turn after the last assistant reply can establish ownership.
+	// Earlier notifications remain in Claude's replayed conversation history.
+	turnStart := len(r.Messages)
+	for turnStart > 0 && (r.Messages[turnStart-1].Role == "user" || r.Messages[turnStart-1].Role == "system") {
+		turnStart--
+	}
+	var notice continuationNotice
+	notificationOnly := true
+	for i, m := range r.Messages {
 		if m.Role == "assistant" {
 			r.HasHistory = true
 		}
@@ -80,12 +90,23 @@ func ParseRequest(raw []byte) (Request, error) {
 		}
 		texts, removed := taskText(plainText(content))
 		r.ReminderBlocks += removed
-		if m.Role == "user" && strings.TrimSpace(texts) != "" {
+		if m.Role == "user" && texts != "" {
 			r.Text = texts
+			if i >= turnStart {
+				r.CurrentUserText = texts
+			}
 		}
-		if texts != "" {
+		if i >= turnStart && notificationOnly {
+			notificationOnly = notice.add(m.Role, content)
+		}
+		// Native system notifications and hook hints are infrastructure messages,
+		// not task complexity evidence for the paid classifier.
+		if texts != "" && (m.Role == "user" || m.Role == "assistant") {
 			recent = append(recent, m.Role+": "+texts)
 		}
+	}
+	if notificationOnly && notice.hasNotification {
+		r.ContinuationCalls = notice.calls
 	}
 	// Inspect all fields for cache hints and unsupported server state.
 	var all any

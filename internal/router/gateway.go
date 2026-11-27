@@ -226,12 +226,12 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 			return
 		}
 	}
-	if err = g.Store.Save(rec); err != nil {
+	if err = g.Store.startRequest(rec, req.ContinuationCalls); err != nil {
 		errorJSON(w, 503, "request ledger unavailable")
 		return
 	}
-	if g.Config.StoreTaskSummaries && rec.Class == "main" && rec.Agent == "" && rec.Prompt != "" && req.Text != "" {
-		if err := g.Store.SaveTaskLabel(TaskLabel{Session: rec.Session, Prompt: rec.Prompt, Title: req.Text, Source: "request"}, false); err != nil {
+	if g.Config.StoreTaskSummaries && rec.Class == "main" && rec.Agent == "" && rec.Prompt != "" && req.CurrentUserText != "" {
+		if err := g.Store.SaveTaskLabel(TaskLabel{Session: rec.Session, Prompt: rec.Prompt, Title: req.CurrentUserText, Source: "request"}, false); err != nil {
 			g.logError("failed to save task summary")
 		}
 	}
@@ -322,9 +322,10 @@ func (g *Gateway) messages(w http.ResponseWriter, httpReq *http.Request) {
 	w.WriteHeader(resp.StatusCode)
 	stream := strings.Contains(resp.Header.Get("Content-Type"), "text/event-stream")
 	var obs observer
-	if resp.StatusCode == http.StatusOK && rec.Cooperation != nil && rec.Cooperation.AgentToolAvailable != nil && rec.Prompt != "" && rec.Session != "" {
+	if resp.StatusCode == http.StatusOK && rec.Class == "main" && rec.Agent == "" && rec.Prompt != "" && !strings.HasPrefix(rec.Session, "unattributed-") {
 		obs.observeTool = func(call, tool string) {
-			if g.Config.Cooperation.batchMode(tool) == "" && tool != "Agent" && tool != "Task" {
+			cooperative := rec.Cooperation != nil && rec.Cooperation.AgentToolAvailable != nil
+			if !backgroundTool(tool) && !(cooperative && g.Config.Cooperation.batchMode(tool) != "") {
 				return
 			}
 			if err := g.Store.bindDelegationTool(rec, call, tool); err != nil {
